@@ -3,7 +3,7 @@ name: Build tack-agent for Windows
 on:
   push:
     branches:
-      - feat/windows-zalo-pair-agent
+      - main
   workflow_dispatch:
 
 permissions:
