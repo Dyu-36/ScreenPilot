@@ -157,7 +157,8 @@ pub fn append_log(message: &str) {
         }
     }
 
-    let line = format!("[{}] {}\r\n", unix_seconds(), message.replace(['\r', '\n'], " "));
+    let clean = message.replace('\r', " ").replace('\n', " ");
+    let line = format!("[{}] {}\r\n", unix_seconds(), clean);
     use std::io::Write;
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = file.write_all(line.as_bytes());
