@@ -18,7 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use rand::Rng;
 
 use state::{append_log, AgentState};
@@ -43,6 +43,7 @@ struct Options {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentOutcome {
+    Continue,
     Unpaired,
 }
 
@@ -149,6 +150,7 @@ fn run_windows(options: Options) -> Result<()> {
 
         match run_agent_loop(&token, &mut pair_state)? {
             AgentOutcome::Unpaired => run_pairing(&token),
+            AgentOutcome::Continue => Ok(()),
         }
     } else if options.background {
         append_log("background start skipped: no paired chat");
@@ -349,21 +351,7 @@ fn dispatch_paired_command(
         }
     }
 
-    // Chỉ có một outcome làm thay đổi vòng đời. Mọi lệnh còn lại tiếp tục chạy.
-    // Dùng cùng enum giúp caller không phải duy trì thêm trạng thái boolean mơ hồ.
-    Ok(AgentOutcome::Unpaired).and_then(|_| {
-        // Giá trị này không được dùng cho các nhánh continue; caller chỉ kiểm tra Unpaired.
-        // Trả về bằng một helper riêng bên dưới để giữ type rõ ràng.
-        Ok(continue_outcome())
-    })
-}
-
-#[cfg(target_os = "windows")]
-fn continue_outcome() -> AgentOutcome {
-    // AgentOutcome hiện chỉ có biến thể Unpaired để biểu diễn việc thoát vòng lặp.
-    // Hàm dispatch xử lý continue bằng một sentinel khác ở lớp wrapper.
-    // Hàm này không bao giờ được caller xem là unpair nhờ wrapper dispatch_result_is_unpaired.
-    AgentOutcome::Unpaired
+    Ok(AgentOutcome::Continue)
 }
 
 #[cfg(target_os = "windows")]
