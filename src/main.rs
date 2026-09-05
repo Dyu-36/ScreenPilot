@@ -116,22 +116,28 @@ fn run_windows(options: Options) -> Result<()> {
         return Ok(());
     }
 
+    let _instance = match windows::acquire_single_instance()? {
+        Some(guard) => guard,
+        None => {
+            if !options.background {
+                if options.local_unpair || options.force_pair {
+                    windows::show_info(
+                        "Tack Agent đang chạy nền. Để hủy/ghép lại an toàn, dùng /unpair từ Zalo hoặc đóng tiến trình Tack Agent trước rồi chạy lại lệnh cục bộ.",
+                    );
+                } else {
+                    windows::show_info("Tack Agent đang chạy nền rồi.");
+                }
+            }
+            return Ok(());
+        }
+    };
+
     if options.local_unpair {
         state::remove_pair_state()?;
         windows::remove_autostart()?;
         windows::show_info("Đã hủy pair cục bộ và gỡ Tack Agent khỏi Windows startup.");
         return Ok(());
     }
-
-    let _instance = match windows::acquire_single_instance()? {
-        Some(guard) => guard,
-        None => {
-            if !options.background {
-                windows::show_info("Tack Agent đang chạy nền rồi.");
-            }
-            return Ok(());
-        }
-    };
 
     if options.force_pair {
         state::remove_pair_state()?;
@@ -413,7 +419,7 @@ fn zalo_help_text() -> &'static str {
 }
 
 fn local_help_text() -> &'static str {
-    "Tack Agent 1.0\n\nDouble-click: pair lần đầu hoặc chạy agent nếu đã pair.\n\nTùy chọn quản trị:\n--pair  Ghép cặp lại\n--unpair  Xóa pair và startup\n--set-token <token>  Lưu Bot Token Zalo\n--clear-token  Xóa token cục bộ\n--install-startup  Cài chạy cùng Windows\n--remove-startup  Gỡ khỏi startup\n--capture <path.png>  Chụp thử ra file\n--background  Chạy nền (Windows startup dùng tùy chọn này)"
+    "Tack Agent 1.0\n\nDouble-click: pair lần đầu hoặc chạy agent nếu đã pair.\n\nTùy chọn quản trị:\n--pair  Ghép cặp lại\n--unpair  Xóa pair và startup (chỉ khi agent nền chưa chạy)\n--set-token <token>  Lưu Bot Token Zalo\n--clear-token  Xóa token cục bộ\n--install-startup  Cài chạy cùng Windows\n--remove-startup  Gỡ khỏi startup\n--capture <path.png>  Chụp thử ra file\n--background  Chạy nền (Windows startup dùng tùy chọn này)"
 }
 
 fn parse_options() -> Result<Options> {
