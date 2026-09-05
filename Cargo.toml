@@ -1,0 +1,15 @@
+[package]
+name = "screen_capture"
+version = "1.0.0"
+edition = "2024"
+
+# Chỉ Windows mới cần xcap.
+# Linux KDE Wayland không kéo xcap/X11 dependencies.
+[target.'cfg(target_os = "windows")'.dependencies]
+xcap = "0.9.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+panic = "abort"
