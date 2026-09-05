@@ -1,302 +1,136 @@
-# Screenshot
+# Tack Agent
 
-Đúng ông chủ. Với **CachyOS + KDE Plasma + Wayland**, tôi khuyên **không dùng `xcap` trên Linux**. KDE đã có đường chụp native qua **Spectacle/KWin**, và Spectacle hỗ trợ chính thức chế độ background: chụp rồi thoát **không hiện GUI**, `--nonotify` còn tắt luôn notification. Trên Arch hiện manpage của Spectacle 6.7.4 vẫn có đầy đủ `--background`, `--fullscreen`, `--nonotify`, `--output`. ([Arch Linux Man Pages][1])
+`tack-agent.exe` là agent Windows chạy ẩn, ghép cặp một lần với Zalo rồi cho phép tài khoản Zalo đã pair yêu cầu chụp màn hình từ xa.
 
-Nếu tool của ông chủ vẫn cần **Windows + KDE Wayland**, tôi sẽ làm hybrid như sau:
+## Flow người dùng
 
-* **Windows:** Rust `xcap` trực tiếp.
-* **CachyOS KDE Wayland:** Rust gọi Spectacle native của KDE.
-* Không mở terminal.
-* Không popup GUI.
-* Không notification.
-* Lưu PNG theo đường dẫn chỉ định.
+1. Double-click `tack-agent.exe`.
+2. Cửa sổ pair hiện lệnh dạng `/pair 123456`.
+3. Mã pair có hiệu lực trong **60 giây**.
+4. Gửi đúng lệnh đó cho Zalo Bot.
+5. Tack Agent lưu `chat_id`, đăng ký chạy cùng Windows và **đóng tiến trình pair ngay**.
+6. Từ lần đăng nhập Windows kế tiếp, agent chạy với `--background`: không terminal, không popup.
+7. Chỉ Zalo đã pair mới được xử lý lệnh.
 
-### `Cargo.toml`
+Agent dùng Zalo Bot `getUpdates` long-polling trực tiếp từ máy Windows. Không cần webhook, port mở, tunnel hay public inbound URL.
 
-```toml
-[package]
-name = "screen_capture"
-version = "1.0.0"
-edition = "2024"
+## Lệnh Zalo
 
-# Chỉ Windows mới cần xcap.
-# Linux KDE Wayland không kéo xcap/X11 dependencies.
-[target.'cfg(target_os = "windows")'.dependencies]
-xcap = "0.9.8"
+| Lệnh | Tác dụng |
+| --- | --- |
+| `/screenshot` | Chụp màn hình chính và gửi ảnh về Zalo |
+| `/screen`, `/cap` | Alias của `/screenshot` |
+| `/status`, `/ping` | Kiểm tra agent đang online |
+| `/help`, `/start` | Xem danh sách lệnh |
+| `/unpair` | Hủy pair, gỡ startup và mở mã pair mới trên PC trong 60 giây |
 
-[profile.release]
-opt-level = 3
-lto = true
-strip = true
-panic = "abort"
+Tin nhắn/lệnh từ `chat_id` khác bị bỏ qua.
+
+## Gửi screenshot
+
+Windows screenshot được chụp bằng `xcap` và lưu tạm trong `%TEMP%\tack-agent`.
+
+Để gửi ảnh qua Zalo Bot, agent thử upload file tạm theo thứ tự:
+
+1. Litterbox (TTL 1 giờ)
+2. Tmpfiles
+3. 0x0.st
+4. File.io
+
+Sau đó URL được truyền cho Zalo `sendPhoto`. File PNG cục bộ được xóa ngay sau lần gửi.
+
+Điều này **không yêu cầu máy Windows tự public một URL/server**, nhưng ảnh có đi qua một dịch vụ lưu file tạm trước khi Zalo tải ảnh. Nếu yêu cầu bảo mật không cho phép dịch vụ trung gian, cần thay transport media bằng một cơ chế khác được Zalo hỗ trợ.
+
+## Bot Token
+
+Tack Agent tìm token theo thứ tự:
+
+1. Biến môi trường runtime `TACK_ZALO_BOT_TOKEN`.
+2. Token được nhúng lúc build bằng cùng tên biến môi trường.
+3. `%APPDATA%\tack-agent\config.json`.
+4. Token Gotack đã lưu tại `%APPDATA%\gotack\zalo.json`.
+
+Có thể lưu token riêng cho Tack Agent:
+
+```powershell
+.\tack-agent.exe --set-token "BOT_TOKEN"
 ```
 
-### `src/main.rs`
+Hoặc xóa token cục bộ:
 
-```rust
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-
-use std::{
-    env,
-    error::Error,
-    fs,
-    path::{Path, PathBuf},
-    process,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-fn main() {
-    if let Err(err) = run() {
-        let _ = write_error_log(&err.to_string());
-        process::exit(1);
-    }
-}
-
-fn run() -> Result<(), Box<dyn Error>> {
-    let output = env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(default_output_path);
-
-    if let Some(parent) = output.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-
-    capture_screen(&output)?;
-
-    Ok(())
-}
-
-// ==========================================================
-// WINDOWS
-// ==========================================================
-
-#[cfg(target_os = "windows")]
-fn capture_screen(output: &Path) -> Result<(), Box<dyn Error>> {
-    use xcap::Monitor;
-
-    let monitors = Monitor::all()?;
-
-    if monitors.is_empty() {
-        return Err("No monitor found".into());
-    }
-
-    // Primary monitor.
-    let monitor = monitors
-        .iter()
-        .find(|monitor| monitor.is_primary().unwrap_or(false))
-        .unwrap_or(&monitors[0]);
-
-    let image = monitor.capture_image()?;
-
-    image.save(output)?;
-
-    Ok(())
-}
-
-// ==========================================================
-// LINUX / KDE PLASMA / WAYLAND
-// ==========================================================
-
-#[cfg(target_os = "linux")]
-fn capture_screen(output: &Path) -> Result<(), Box<dyn Error>> {
-    use std::process::{Command, Stdio};
-
-    let output = output
-        .to_str()
-        .ok_or("Invalid output path")?;
-
-    /*
-        KDE Plasma / Wayland:
-
-        spectacle
-            --background  = không mở GUI
-            --nonotify    = không hiện notification
-            --fullscreen  = chụp toàn desktop
-            --output      = file đích
-    */
-
-    let status = Command::new("spectacle")
-        .arg("--background")
-        .arg("--nonotify")
-        .arg("--fullscreen")
-        .arg("--output")
-        .arg(output)
-
-        // Headless hoàn toàn về stdout/stderr
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-
-        .status()?;
-
-    if !status.success() {
-        return Err(
-            format!(
-                "Spectacle failed with exit code: {:?}",
-                status.code()
-            )
-            .into(),
-        );
-    }
-
-    if !Path::new(output).exists() {
-        return Err("Screenshot file was not created".into());
-    }
-
-    Ok(())
-}
-
-// ==========================================================
-// UNSUPPORTED OS
-// ==========================================================
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn capture_screen(_output: &Path) -> Result<(), Box<dyn Error>> {
-    Err("Unsupported operating system".into())
-}
-
-// ==========================================================
-// OUTPUT
-// ==========================================================
-
-fn default_output_path() -> PathBuf {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-
-    executable_directory()
-        .join(format!("screenshot-{timestamp}.png"))
-}
-
-fn executable_directory() -> PathBuf {
-    env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .or_else(|| env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-fn write_error_log(message: &str) -> std::io::Result<()> {
-    let log_path = executable_directory().join("screenshot-error.log");
-
-    fs::write(log_path, message)
-}
+```powershell
+.\tack-agent.exe --clear-token
 ```
 
-### Trên CachyOS của ông chủ
+## Windows startup
 
-Kiểm tra:
-
-```bash
-echo $XDG_SESSION_TYPE
-```
-
-Kết quả đúng là:
+Sau khi pair thành công, agent ghi value `TackAgent` vào:
 
 ```text
-wayland
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 ```
 
-Kiểm tra Spectacle:
+Command startup trỏ tới chính file hiện tại:
 
-```bash
-spectacle --version
+```text
+"C:\...\tack-agent.exe" --background
 ```
 
-Nếu chưa có:
+Vì vậy nên đặt `tack-agent.exe` ở vị trí cố định trước khi pair. Nếu di chuyển file sau đó, chạy lại `--install-startup` hoặc `--pair`.
 
-```bash
-sudo pacman -S spectacle
+## File trạng thái
+
+```text
+%APPDATA%\tack-agent\paired.json
+%APPDATA%\tack-agent\config.json
+%APPDATA%\tack-agent\agent.log
 ```
 
-KDE xác nhận Spectacle có chế độ command-line background dành cho việc script screenshot mà **không hiển thị GUI hoặc yêu cầu tương tác người dùng**. ([KDE Documentation][2])
+`agent.log` tự xoay đơn giản khi vượt khoảng 2 MB và không cố ý ghi Bot Token.
 
-Có thể test thẳng:
+## Tùy chọn quản trị cục bộ
 
-```bash
-spectacle \
-    --background \
-    --nonotify \
-    --fullscreen \
-    --output /tmp/test.png
+```text
+--pair                  Ghép cặp lại
+--unpair                Xóa pair và gỡ Windows startup
+--set-token <token>     Lưu Bot Token Zalo riêng
+--clear-token           Xóa token riêng
+--install-startup       Đăng ký chạy cùng Windows
+--remove-startup        Gỡ khỏi startup
+--capture <path.png>    Chụp thử screenshot ra file
+--background            Chạy nền; Windows startup dùng mode này
+--help                  Hiện trợ giúp
 ```
 
-Lệnh này tương đương:
+`--pair` và `--unpair` chỉ thay đổi pair khi không có instance nền đang chạy. Nếu agent nền đang sống, dùng `/unpair` từ Zalo (ưu tiên) hoặc đóng tiến trình Tack Agent trước; cách này tránh trường hợp file state bị xóa nhưng process cũ vẫn giữ `chat_id` trong RAM.
 
-```bash
-spectacle -b -n -f -o /tmp/test.png
-```
+## Single instance
 
-Các option đó được manpage Arch hiện tại ghi nhận chính thức. ([Arch Linux Man Pages][1])
+Agent dùng named Windows mutex `Local\TackAgent.SingleInstance.v1`. Nếu agent nền đang chạy mà người dùng mở thêm một bản, tiến trình thứ hai sẽ thoát thay vì tạo hai long-poll consumer.
 
-Sau khi chạy:
+## Build
 
-```bash
-ls -lh /tmp/test.png
-```
+Yêu cầu Rust stable trên Windows:
 
-### Build
-
-Trên CachyOS:
-
-```bash
+```powershell
+cargo test
 cargo build --release
 ```
 
-Binary:
+Output:
 
 ```text
-target/release/screen_capture
+target\release\tack-agent.exe
 ```
 
-Chạy:
+GitHub Actions PR CI cũng build trên `windows-latest`, chạy tests, verify file `.exe` và upload artifact `tack-agent-windows`. Workflow release chạy lại khi thay đổi được merge/push vào `main`.
 
-```bash
-./target/release/screen_capture
-```
-
-Nó sẽ tạo:
+## Source layout
 
 ```text
-screenshot-178862....png
+src/main.rs      lifecycle + pair + command dispatch
+src/state.rs     pair state + token + logs
+src/windows.rs   mutex + registry startup + MessageBox + screenshot
+src/zalo.rs      Zalo Bot API + long polling
+src/media.rs     temporary screenshot upload providers
 ```
-
-Hoặc:
-
-```bash
-./target/release/screen_capture /tmp/current-screen.png
-```
-
-**Không có Konsole nào xuất hiện.** Việc một chương trình Rust gọi `Command::new("spectacle")` không đồng nghĩa với mở terminal; Spectacle chạy background trực tiếp.
-
-### Nếu ông chủ dùng nhiều màn hình
-
-Hiện tại:
-
-```rust
-.arg("--fullscreen")
-```
-
-nghĩa là **toàn bộ desktop, gồm tất cả monitor**. KDE định nghĩa Full Screen là toàn desktop/all monitors. ([KDE Documentation][3])
-
-Nếu muốn chỉ monitor hiện tại, đổi thành:
-
-```rust
-.arg("--current")
-```
-
-tức:
-
-```bash
-spectacle -b -n -m -o /tmp/test.png
-```
-
-Tôi ưu tiên kiến trúc này cho **CachyOS KDE Plasma Wayland + Windows** vì Linux dùng luôn pipeline screenshot của KWin/Spectacle thay vì cố đọc framebuffer theo cách X11. Nó cũng giúp binary Linux không phải link một đống thư viện X11/xcap.
-
-[1]: https://man.archlinux.org/man/spectacle.1.en?utm_source=chatgpt.com "spectacle(1)  Arch manual pages"
-[2]: https://docs.kde.org/stable_kf6/en/spectacle/spectacle/starting.html?utm_source=chatgpt.com "Chapter2.Starting Spectacle"
-[3]: https://docs.kde.org/stable_kf6/en/spectacle/spectacle/using.html?utm_source=chatgpt.com "Chapter3.Using Spectacle"
