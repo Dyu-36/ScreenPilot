@@ -94,13 +94,15 @@ Vì vậy nên đặt `tack-agent.exe` ở vị trí cố định trước khi p
 --pair                  Ghép cặp lại
 --unpair                Xóa pair và gỡ Windows startup
 --set-token <token>     Lưu Bot Token Zalo riêng
---clear-token            Xóa token riêng
---install-startup        Đăng ký chạy cùng Windows
---remove-startup         Gỡ khỏi startup
---capture <path.png>     Chụp thử screenshot ra file
---background             Chạy nền; Windows startup dùng mode này
---help                   Hiện trợ giúp
+--clear-token           Xóa token riêng
+--install-startup       Đăng ký chạy cùng Windows
+--remove-startup        Gỡ khỏi startup
+--capture <path.png>    Chụp thử screenshot ra file
+--background            Chạy nền; Windows startup dùng mode này
+--help                  Hiện trợ giúp
 ```
+
+`--pair` và `--unpair` chỉ thay đổi pair khi không có instance nền đang chạy. Nếu agent nền đang sống, dùng `/unpair` từ Zalo (ưu tiên) hoặc đóng tiến trình Tack Agent trước; cách này tránh trường hợp file state bị xóa nhưng process cũ vẫn giữ `chat_id` trong RAM.
 
 ## Single instance
 
@@ -121,7 +123,7 @@ Output:
 target\release\tack-agent.exe
 ```
 
-GitHub Actions PR CI cũng build trên `windows-latest`, chạy tests, verify file `.exe` và upload artifact `tack-agent-windows`.
+GitHub Actions PR CI cũng build trên `windows-latest`, chạy tests, verify file `.exe` và upload artifact `tack-agent-windows`. Workflow release chạy lại khi thay đổi được merge/push vào `main`.
 
 ## Source layout
 
