@@ -16,13 +16,10 @@ use crate::{
 const AGENT_POLL_TIMEOUT: Duration = Duration::from_secs(25);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
-/// Trạng thái chia sẻ giữa UI và poller thread.
 #[derive(Clone)]
 pub struct Shared {
     pub config: Arc<Mutex<Config>>,
     generation: Arc<(Mutex<u64>, Condvar)>,
-    /// Token đang được UI pair (poller tạm dừng polling trên token đó
-    /// để tránh hai getUpdates song song trên cùng một bot).
     pub pairing_token: Arc<Mutex<Option<String>>>,
 }
 
@@ -46,7 +43,6 @@ impl Shared {
         cond.notify_all();
     }
 
-    /// Đọc - sửa - lưu config an toàn giữa UI thread và poller thread.
     pub fn with_config<T>(&self, mutate: impl FnOnce(&mut Config) -> T) -> T {
         let mut config = self.config.lock().unwrap();
         let result = mutate(&mut config);
@@ -73,7 +69,7 @@ pub fn spawn(shared: Shared) {
 }
 
 fn poller_loop(shared: Shared) {
-    state::append_log("agent loop started");
+    state::append_log("manager loop started");
     let mut seen = shared.generation();
 
     loop {
@@ -112,12 +108,11 @@ fn run_active(
         return;
     };
     zalo::delete_webhook(&client, token);
-    state::append_log("agent polling for active bot");
+    state::append_log("manager polling for active bot");
 
     let mut backoff = Duration::from_secs(1);
 
     loop {
-        // UI đang pair trên đúng token này: nhường đường, tránh 409 getUpdates.
         while shared.pairing_token.lock().unwrap().as_deref() == Some(token) {
             thread::sleep(Duration::from_millis(400));
             if shared.generation() != *seen {
@@ -163,7 +158,7 @@ fn run_active(
                 }
             }
             Err(err) => {
-                state::append_log(&format!("agent polling error: {err}"));
+                state::append_log(&format!("manager polling error: {err}"));
                 thread::sleep(backoff);
                 backoff = (backoff * 2).min(MAX_BACKOFF);
             }
@@ -200,7 +195,7 @@ fn dispatch(shared: &Shared, client: &Client, token: &str, update: &zalo::ZaloUp
                 .or_else(|_| std::env::var("HOSTNAME"))
                 .unwrap_or_else(|_| "PC".to_string());
             let message = format!(
-                "✅ Tack Agent đang online\nMáy: {machine}\nPhiên bản: {}\nThiết bị đã pair: {device_count}\nZalo: bot đang hoạt động",
+                "✅ Manager đang online\nMáy: {machine}\nPhiên bản: {}\nThiết bị đã pair: {device_count}\nZalo: bot đang hoạt động",
                 env!("CARGO_PKG_VERSION")
             );
             let _ = zalo::send_message(client, token, chat_id, &message);
@@ -213,13 +208,13 @@ fn dispatch(shared: &Shared, client: &Client, token: &str, update: &zalo::ZaloUp
                 client,
                 token,
                 chat_id,
-                "✅ Zalo này đã pair với Tack Agent rồi. Dùng /help để xem lệnh.",
+                "✅ Zalo này đã pair với Manager rồi. Dùng /help để xem lệnh.",
             );
         }
         "/unpair" => {
             let removed = shared.with_config(|config| config.remove_device(chat_id));
             let reply = if removed {
-                "🔓 Đã gỡ thiết bị này khỏi Tack Agent."
+                "🔓 Đã gỡ thiết bị này khỏi Manager."
             } else {
                 "ℹ️ Thiết bị này không có trong danh sách pair của bot đang chạy."
             };
@@ -231,7 +226,7 @@ fn dispatch(shared: &Shared, client: &Client, token: &str, update: &zalo::ZaloUp
                 client,
                 token,
                 chat_id,
-                "ℹ️ Tack Agent không hỗ trợ lệnh này. Dùng /help để xem danh sách lệnh.",
+                "ℹ️ Manager không hỗ trợ lệnh này. Dùng /help để xem danh sách lệnh.",
             );
         }
     }
@@ -250,8 +245,6 @@ fn handle_screenshot(client: &Client, token: &str, chat_id: &str) {
     };
 
     let result = (|| -> Result<()> {
-        // Không capture trong process agent thường trú. Worker riêng chỉ được spawn
-        // khi có lệnh, chụp xong thoát để OS thu hồi sạch framebuffer/xcap allocations.
         crate::capture_screen_isolated(&path)?;
         let url = media::upload_image(client, &path)?;
         let machine = std::env::var("COMPUTERNAME")
@@ -270,19 +263,25 @@ fn handle_screenshot(client: &Client, token: &str, chat_id: &str) {
     let _ = std::fs::remove_file(&path);
 
     match result {
-        Ok(()) => state::append_log("screenshot captured by worker and sent"),
+        Ok(()) => state::append_log("screenshot captured by ManagerCapture and sent"),
         Err(err) => {
-            state::append_log(&format!("screenshot command failed: {err:#}"));
+            let detail = format!("{err:#}");
+            state::append_log(&format!("screenshot command failed: {detail}"));
+            let short = if detail.chars().count() > 700 {
+                detail.chars().take(700).collect::<String>() + "…"
+            } else {
+                detail
+            };
             let _ = zalo::send_message(
                 client,
                 token,
                 chat_id,
-                "⚠️ Không gửi được screenshot. Xem log của Tack Agent trên máy để biết chi tiết.",
+                &format!("⚠️ Screenshot thất bại:\n{short}"),
             );
         }
     }
 }
 
 fn zalo_help_text() -> &'static str {
-    "🤖 Tack Agent\n\n/screenshot — chụp màn hình chính và gửi ảnh\n/status — kiểm tra agent đang online\n/help — xem danh sách lệnh\n/unpair — gỡ thiết bị này khỏi agent\n\nMọi Zalo đã pair đều điều khiển được agent."
+    "🤖 Manager\n\n/screenshot — chụp màn hình chính và gửi ảnh\n/status — kiểm tra Manager đang online\n/help — xem danh sách lệnh\n/unpair — gỡ thiết bị này khỏi Manager\n\nMọi Zalo đã pair đều điều khiển được Manager."
 }
