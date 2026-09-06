@@ -1,9 +1,6 @@
 name: Build Tack Agent for Windows
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -23,7 +20,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # cargo build đã kiểm tra compile; không chạy cargo check/test lặp lại để tiết kiệm thời gian CI.
+      # Chỉ build khi chạy thủ công; không auto-check mỗi lần push.
       - name: Build release
         run: cargo build --release
 
