@@ -121,7 +121,9 @@ func call(parent context.Context, client *http.Client, token, method string, bod
 		return nil, fmt.Errorf("Zalo %s: không đọc được phản hồi: %w", method, err)
 	}
 	var envelope map[string]any
-	if err := json.Unmarshal(raw, &envelope); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("Zalo %s: phản hồi JSON không hợp lệ: %w", method, err)
 	}
 
