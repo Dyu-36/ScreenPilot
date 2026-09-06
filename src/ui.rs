@@ -51,7 +51,6 @@ pub struct TackApp {
     token_input: String,
     pair: Option<PairSession>,
     status_message: Option<String>,
-    close_to_hide: bool,
 }
 
 impl TackApp {
@@ -64,7 +63,6 @@ impl TackApp {
             token_input: String::new(),
             pair: None,
             status_message: None,
-            close_to_hide: false,
         }
     }
 
@@ -92,28 +90,36 @@ impl TackApp {
         ));
     }
 
-    fn hide_window(&mut self) {
-        self.close_to_hide = true;
-        self.ctx.request_repaint();
+    fn close_to_background(&mut self, ctx: &egui::Context) {
+        if let Some(pair) = self.pair.take() {
+            pair.stop.store(true, Ordering::SeqCst);
+        }
+        *self.shared.pairing_token.lock().unwrap() = None;
+
+        if let Err(err) = crate::spawn_background_after_exit() {
+            state::append_log(&format!("cannot switch GUI to background: {err:#}"));
+            self.status_message = Some(format!("Không thể chuyển sang chạy nền: {err:#}"));
+            return;
+        }
+
+        // Process headless mới đang chờ single-instance được nhả. Đóng GUI thật sự
+        // thay vì chỉ ẩn để toàn bộ eframe/wgpu/windowing memory được OS thu hồi.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
 
 impl eframe::App for TackApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // User bấm X / end task từ cửa sổ: không thoát, chỉ ẩn cửa sổ xuống.
+        // Nút X cũng là "chạy nền": spawn process headless kế nhiệm rồi cho GUI đóng.
         if ctx.input(|input| input.viewport().close_requested()) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.hide_window();
+            if let Err(err) = crate::spawn_background_after_exit() {
+                state::append_log(&format!("cannot restore background on window close: {err:#}"));
+            }
         }
 
         if crate::SHOW_REQUESTED.swap(false, Ordering::SeqCst) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-        }
-
-        if self.close_to_hide {
-            self.close_to_hide = false;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
         // Pair session kết thúc?
@@ -141,7 +147,7 @@ impl eframe::App for TackApp {
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new(format!(
-                    "Agent chỉ tắt khi bạn kết thúc tiến trình trong Task Manager. Log: {}",
+                    "Đóng/Ẩn giao diện sẽ trả về agent headless để giảm RAM. Log: {}",
                     state::config_dir().join("agent.log").display()
                 ))
                 .small()
@@ -200,7 +206,6 @@ impl TackApp {
         if let Some(message) = &self.status_message {
             ui.colored_label(egui::Color32::LIGHT_BLUE, message);
         }
-
     }
 
     fn render_pairing(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -247,7 +252,6 @@ impl TackApp {
             *self.shared.pairing_token.lock().unwrap() = None;
             self.view = View::Manage;
         }
-
     }
 
     fn render_manage(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -255,12 +259,15 @@ impl TackApp {
             ui.heading("Tack Agent");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Ẩn").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    self.close_to_background(ctx);
                 }
             });
         });
         ui.label(
-            egui::RichText::new("Agent đang chạy nền — chỉ tắt khi kết thúc tiến trình.").small(),
+            egui::RichText::new(
+                "GUI chỉ chạy khi cần quản lý. Nhấn Ẩn để thoát GUI và tiếp tục bằng agent headless nhẹ RAM.",
+            )
+            .small(),
         );
         ui.add_space(4.0);
 
@@ -346,7 +353,6 @@ impl TackApp {
                 }
             }
         });
-
     }
 }
 
@@ -381,7 +387,6 @@ fn install_vietnamese_font(ctx: &egui::Context) {
         return;
     }
 }
-
 
 fn spawn_pair_session(shared: Shared, token: String, ctx: egui::Context) -> PairSession {
     let code = generate_pair_code();

