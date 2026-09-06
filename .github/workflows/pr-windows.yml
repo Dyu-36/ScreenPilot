@@ -10,75 +10,43 @@ permissions:
   contents: read
 
 jobs:
-  tack-agent:
+  windows-go:
     runs-on: windows-latest
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check
-        run: cargo check
-
-      - name: Test
-        run: cargo test
-
-      - name: Build release
-        run: cargo build --release
-
-      - name: Verify tack-agent.exe
+      - name: Check formatting
         shell: pwsh
         run: |
-          $exe = "target\release\tack-agent.exe"
-          if (!(Test-Path $exe)) {
-            throw "Expected $exe was not created"
+          $files = gofmt -l .
+          if ($files) {
+            $files
+            throw "gofmt required"
           }
-          Get-Item $exe | Format-List Name,Length,LastWriteTime
 
-      - name: Upload tack-agent.exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: tack-agent-windows
-          path: target/release/tack-agent.exe
-          if-no-files-found: error
-          retention-days: 30
+      - name: Vet
+        run: go vet ./...
 
-  sync-lockfile:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: tack-agent
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+      - name: Test
+        run: go test ./...
 
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Build release
+        shell: cmd
+        run: build-release.cmd
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Generate Cargo.lock
-        run: cargo generate-lockfile
-
-      - name: Commit Cargo.lock when changed
-        shell: bash
+      - name: Verify release files
+        shell: pwsh
         run: |
-          if git diff --quiet -- Cargo.lock; then
-            echo "Cargo.lock already synchronized"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
-          git commit -m "Sync Cargo.lock"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          foreach ($file in @("dist\Manager.exe", "dist\ManagerUI.exe", "dist\ManagerCapture.exe")) {
+            if (!(Test-Path $file)) {
+              throw "Expected $file was not created"
+            }
+          }

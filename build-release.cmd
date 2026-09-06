@@ -1,22 +1,47 @@
 @echo off
 setlocal
 
-echo [Manager] Stopping running Manager processes that may lock release binaries...
+echo [Manager] Stopping running processes...
 for %%P in (Manager.exe ManagerUI.exe ManagerCapture.exe) do (
     taskkill /F /IM %%P >nul 2>&1
 )
 
-echo [Manager] Building release binaries...
-cargo build --release
-set EXIT_CODE=%ERRORLEVEL%
+if exist dist rmdir /S /Q dist
+mkdir dist
 
-if not "%EXIT_CODE%"=="0" (
-    echo [Manager] Build failed with exit code %EXIT_CODE%.
-    exit /b %EXIT_CODE%
-)
+echo [Manager] Formatting...
+go fmt ./...
+if errorlevel 1 exit /b %errorlevel%
+
+echo [Manager] Vetting...
+go vet ./...
+if errorlevel 1 exit /b %errorlevel%
+
+echo [Manager] Testing...
+go test ./...
+if errorlevel 1 exit /b %errorlevel%
+
+set CGO_ENABLED=0
+set LDFLAGS=-s -w -H=windowsgui
+
+echo [Manager] Building Manager.exe...
+go build -trimpath -ldflags="%LDFLAGS%" -o dist\Manager.exe ./cmd/manager
+if errorlevel 1 exit /b %errorlevel%
+
+echo [Manager] Building ManagerUI.exe...
+go build -trimpath -ldflags="%LDFLAGS%" -o dist\ManagerUI.exe ./cmd/manager-ui
+if errorlevel 1 exit /b %errorlevel%
+
+echo [Manager] Building ManagerCapture.exe...
+go build -trimpath -ldflags="%LDFLAGS%" -o dist\ManagerCapture.exe ./cmd/manager-capture
+if errorlevel 1 exit /b %errorlevel%
 
 echo [Manager] Build complete:
-echo   target\release\Manager.exe
-echo   target\release\ManagerUI.exe
-echo   target\release\ManagerCapture.exe
+for %%F in (Manager.exe ManagerUI.exe ManagerCapture.exe) do (
+    if not exist dist\%%F (
+        echo Missing dist\%%F
+        exit /b 1
+    )
+    echo   dist\%%F
+)
 exit /b 0

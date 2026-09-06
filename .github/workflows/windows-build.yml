@@ -14,22 +14,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build release
-        run: cargo build --release
+      - name: Build and validate
+        shell: cmd
+        run: build-release.cmd
 
       - name: Verify executables
         shell: pwsh
         run: |
           $files = @(
-            "target\release\Manager.exe",
-            "target\release\ManagerUI.exe",
-            "target\release\ManagerCapture.exe"
+            "dist\Manager.exe",
+            "dist\ManagerUI.exe",
+            "dist\ManagerCapture.exe"
           )
           foreach ($file in $files) {
             if (!(Test-Path $file)) {
@@ -43,8 +44,8 @@ jobs:
         with:
           name: manager-windows
           path: |
-            target/release/Manager.exe
-            target/release/ManagerUI.exe
-            target/release/ManagerCapture.exe
+            dist/Manager.exe
+            dist/ManagerUI.exe
+            dist/ManagerCapture.exe
           if-no-files-found: error
           retention-days: 30

@@ -1,3 +1,4 @@
-/target
+/dist/
+*.exe
 *.png
-screenshot-error.log
+manager-error.log
