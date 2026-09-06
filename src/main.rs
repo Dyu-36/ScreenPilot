@@ -1,4 +1,5 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+#![allow(dead_code)] // shared modules expose APIs used by tack-ui; lint is per binary.
 
 mod agent;
 mod ipc;
