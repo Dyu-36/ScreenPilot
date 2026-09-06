@@ -12,7 +12,7 @@ use ::windows::{
             Gdi::{
                 BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
                 GetDC, GetDeviceCaps, HBITMAP, HGDIOBJ, HPALETTE, ReleaseDC, SelectObject,
-                CAPTUREBLT, DESKTOPHORZRES, DESKTOPVERTRES, SRCCOPY,
+                CAPTUREBLT, HORZRES, SRCCOPY, VERTRES,
             },
             Imaging::{
                 IWICImagingFactory, CLSID_WICImagingFactory, GUID_ContainerFormatPng,
@@ -27,22 +27,26 @@ use ::windows::{
 };
 
 /// Native Windows capture: GDI -> HBITMAP -> WIC PNG.
-/// Không có xcap, không tạo full-screen RGBA Vec trong Rust và encoder chạy no-cache.
-///
-/// Với Windows display scaling 125%/150%, GetSystemMetrics có thể trả logical pixels,
-/// làm ảnh chỉ chụp được một góc màn hình. DESKTOPHORZRES/DESKTOPVERTRES lấy kích
-/// thước desktop vật lý từ screen DC nên chụp đủ primary monitor bất kể DPI scaling.
+/// Kích thước được lấy từ chính screen DC (HORZRES/VERTRES), nên source DC và
+/// destination bitmap luôn cùng hệ tọa độ. Cách này tránh lỗi DPI scaling làm
+/// BitBlt chỉ chụp một góc hoặc fail khi physical/logical pixels bị trộn lẫn.
 pub fn capture_screen(output: &Path) -> Result<()> {
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).context("không tạo được thư mục lưu screenshot")?;
     }
 
     let bitmap = OwnedBitmap::capture_primary_screen()?;
-    encode_png_with_wic(bitmap.0, output)
+    encode_png_with_wic(bitmap.0, output)?;
+
+    let size = std::fs::metadata(output)
+        .with_context(|| format!("không đọc được file screenshot {}", output.display()))?
+        .len();
+    if size == 0 {
+        return Err(anyhow!("WIC tạo file screenshot rỗng"));
+    }
+    Ok(())
 }
 
-/// Chỉ giữ HBITMAP sau khi BitBlt hoàn tất. Screen DC và memory DC được nhả trước
-/// khi bắt đầu WIC encode để worker giữ ít GDI resource nhất có thể.
 struct OwnedBitmap(HBITMAP);
 
 impl OwnedBitmap {
@@ -53,11 +57,14 @@ impl OwnedBitmap {
                 return Err(anyhow!("GetDC không lấy được desktop DC"));
             }
 
-            let width = GetDeviceCaps(screen_dc, DESKTOPHORZRES);
-            let height = GetDeviceCaps(screen_dc, DESKTOPVERTRES);
+            // HORZRES/VERTRES mô tả đúng raster của chính HDC đang BitBlt.
+            let width = GetDeviceCaps(screen_dc, HORZRES);
+            let height = GetDeviceCaps(screen_dc, VERTRES);
             if width <= 0 || height <= 0 {
                 let _ = ReleaseDC(None, screen_dc);
-                return Err(anyhow!("Windows trả kích thước màn hình vật lý không hợp lệ"));
+                return Err(anyhow!(
+                    "screen DC trả kích thước không hợp lệ: {width}x{height}"
+                ));
             }
 
             let memory_dc = CreateCompatibleDC(screen_dc);
@@ -70,7 +77,9 @@ impl OwnedBitmap {
             if bitmap.is_invalid() {
                 let _ = DeleteDC(memory_dc);
                 let _ = ReleaseDC(None, screen_dc);
-                return Err(anyhow!("CreateCompatibleBitmap thất bại"));
+                return Err(anyhow!(
+                    "CreateCompatibleBitmap thất bại cho kích thước {width}x{height}"
+                ));
             }
 
             let previous_object = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
@@ -99,7 +108,9 @@ impl OwnedBitmap {
 
             if let Err(err) = capture_result {
                 let _ = DeleteObject(HGDIOBJ(bitmap.0));
-                return Err(err).context("BitBlt không chụp được màn hình");
+                return Err(err).with_context(|| {
+                    format!("BitBlt không chụp được màn hình {width}x{height}")
+                });
             }
 
             Ok(Self(bitmap))
