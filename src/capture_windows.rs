@@ -11,7 +11,7 @@ use ::windows::{
         Graphics::{
             Gdi::{
                 BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-                HBITMAP, HDC, HGDIOBJ, HPALETTE, ReleaseDC, SelectObject, CAPTUREBLT, SRCCOPY,
+                HBITMAP, HGDIOBJ, HPALETTE, ReleaseDC, SelectObject, CAPTUREBLT, SRCCOPY,
             },
             Imaging::{
                 IWICImagingFactory, CLSID_WICImagingFactory, GUID_ContainerFormatPng,
@@ -33,19 +33,16 @@ pub fn capture_screen(output: &Path) -> Result<()> {
         std::fs::create_dir_all(parent).context("không tạo được thư mục lưu screenshot")?;
     }
 
-    let capture = GdiCapture::primary_screen()?;
-    encode_png_with_wic(capture.bitmap, output)
+    let bitmap = OwnedBitmap::capture_primary_screen()?;
+    encode_png_with_wic(bitmap.0, output)
 }
 
-struct GdiCapture {
-    screen_dc: HDC,
-    memory_dc: HDC,
-    bitmap: HBITMAP,
-    previous_object: HGDIOBJ,
-}
+/// Chỉ giữ HBITMAP sau khi BitBlt hoàn tất. Screen DC và memory DC được nhả trước
+/// khi bắt đầu WIC encode để worker giữ ít GDI resource nhất có thể.
+struct OwnedBitmap(HBITMAP);
 
-impl GdiCapture {
-    fn primary_screen() -> Result<Self> {
+impl OwnedBitmap {
+    fn capture_primary_screen() -> Result<Self> {
         unsafe {
             let width = GetSystemMetrics(SM_CXSCREEN);
             let height = GetSystemMetrics(SM_CYSCREEN);
@@ -79,7 +76,7 @@ impl GdiCapture {
                 return Err(anyhow!("SelectObject bitmap thất bại"));
             }
 
-            if let Err(err) = BitBlt(
+            let capture_result = BitBlt(
                 memory_dc,
                 0,
                 0,
@@ -89,31 +86,27 @@ impl GdiCapture {
                 0,
                 0,
                 SRCCOPY | CAPTUREBLT,
-            ) {
-                SelectObject(memory_dc, previous_object);
+            );
+
+            // Bitmap phải được bỏ khỏi memory DC trước khi xóa DC / đưa sang WIC.
+            SelectObject(memory_dc, previous_object);
+            DeleteDC(memory_dc);
+            ReleaseDC(None, screen_dc);
+
+            if let Err(err) = capture_result {
                 DeleteObject(HGDIOBJ(bitmap.0));
-                DeleteDC(memory_dc);
-                ReleaseDC(None, screen_dc);
                 return Err(err).context("BitBlt không chụp được màn hình");
             }
 
-            Ok(Self {
-                screen_dc,
-                memory_dc,
-                bitmap,
-                previous_object,
-            })
+            Ok(Self(bitmap))
         }
     }
 }
 
-impl Drop for GdiCapture {
+impl Drop for OwnedBitmap {
     fn drop(&mut self) {
         unsafe {
-            SelectObject(self.memory_dc, self.previous_object);
-            DeleteObject(HGDIOBJ(self.bitmap.0));
-            DeleteDC(self.memory_dc);
-            ReleaseDC(None, self.screen_dc);
+            DeleteObject(HGDIOBJ(self.0.0));
         }
     }
 }
