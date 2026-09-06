@@ -26,7 +26,6 @@ use anyhow::{bail, Context, Result};
 struct Options {
     background: bool,
     capture: Option<PathBuf>,
-    capture_worker: Option<PathBuf>,
     help: bool,
     wait_for_instance: bool,
 }
@@ -40,7 +39,7 @@ fn main() {
         }
     };
 
-    let silent = options.background || options.capture_worker.is_some() || options.wait_for_instance;
+    let silent = options.background || options.wait_for_instance;
     if let Err(err) = run(options) {
         state::append_log(&format!("fatal: {err:#}"));
         if !silent {
@@ -56,20 +55,13 @@ fn run(options: Options) -> Result<()> {
         return Ok(());
     }
 
-    // Screenshot vẫn chạy ở worker ngắn hạn để bất kỳ allocation GDI/WIC nào
-    // cũng được OS thu hồi hoàn toàn ngay sau khi chụp.
-    if let Some(path) = options.capture_worker.as_deref() {
-        platform::capture_screen(path)?;
-        return Ok(());
-    }
-
     if let Some(path) = options.capture.as_deref() {
         capture_screen_isolated(path)?;
         platform::show_info(&format!("Đã chụp màn hình:\n{}", path.display()));
         return Ok(());
     }
 
-    // tack-agent.exe không chứa GUI. Chạy không tham số chỉ mở binary tack-ui.exe.
+    // tack-agent.exe không chứa GUI. Chạy không tham số chỉ mở tack-ui.exe.
     if !options.background {
         launch_ui()?;
         return Ok(());
@@ -89,7 +81,7 @@ fn run(options: Options) -> Result<()> {
 
     let shared = agent::Shared::new(config);
     agent::spawn(shared);
-    state::append_log("headless agent started (GUI-free binary)");
+    state::append_log("headless agent started (GUI/capture-free binary)");
 
     loop {
         thread::park();
@@ -130,22 +122,29 @@ fn launch_ui() -> Result<()> {
     Ok(())
 }
 
+/// Screenshot là process one-shot riêng. tack-agent.exe thường trú không link GDI/WIC/xcap.
 pub(crate) fn capture_screen_isolated(output: &Path) -> Result<()> {
-    let exe = current_program_executable()?;
-    let status = Command::new(exe)
-        .arg("--capture-worker")
+    let capture = sibling_executable("tack-capture")?;
+    if !capture.exists() {
+        bail!(
+            "không tìm thấy {}. Hãy build/copy tack-capture cùng thư mục với tack-agent",
+            capture.display()
+        );
+    }
+
+    let status = Command::new(&capture)
         .arg(output)
         .status()
-        .context("không khởi động được screenshot worker")?;
+        .with_context(|| format!("không khởi động được {}", capture.display()))?;
 
     if !status.success() {
-        bail!("screenshot worker thoát với trạng thái {status}");
+        bail!("tack-capture thoát với trạng thái {status}");
     }
     Ok(())
 }
 
 fn sibling_executable(stem: &str) -> Result<PathBuf> {
-    let mut path = current_program_executable()?;
+    let mut path = env::current_exe().context("không xác định được đường dẫn Tack Agent hiện tại")?;
     #[cfg(target_os = "windows")]
     path.set_file_name(format!("{stem}.exe"));
     #[cfg(not(target_os = "windows"))]
@@ -153,12 +152,8 @@ fn sibling_executable(stem: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn current_program_executable() -> Result<PathBuf> {
-    env::current_exe().context("không xác định được đường dẫn Tack Agent hiện tại")
-}
-
 fn local_help_text() -> &'static str {
-    "Tack Agent 2.0\n\ntack-agent.exe là process nền thuần headless, không link GUI.\nChạy không tham số: mở tack-ui.exe nằm cùng thư mục.\n\nTùy chọn:\n--background  Chạy agent nền nhẹ\n--capture <path.png>  Chụp thử màn hình bằng worker ngắn hạn\n--help  Hiện trợ giúp\n\nWindows dùng GDI + WIC native; xcap chỉ còn dùng cho nền tảng không phải Windows."
+    "Tack Agent 2.0\n\nKiến trúc nhẹ:\n- tack-agent: headless poll/network, không GUI, không graphics capture\n- tack-ui: chỉ chạy khi mở giao diện\n- tack-capture: one-shot, chỉ chạy khi cần screenshot\n\nTùy chọn:\n--background  Chạy agent nền nhẹ\n--capture <path.png>  Chụp thử qua tack-capture\n--help  Hiện trợ giúp\n\nWindows capture dùng GDI + WIC native; xcap không còn được dùng trên Windows."
 }
 
 fn parse_options() -> Result<Options> {
@@ -178,19 +173,8 @@ fn parse_options() -> Result<Options> {
                     .ok_or_else(|| anyhow::anyhow!("--capture cần đường dẫn file PNG"))?;
                 options.capture = Some(path);
             }
-            "--capture-worker" => {
-                let path = args
-                    .next()
-                    .map(PathBuf::from)
-                    .ok_or_else(|| anyhow::anyhow!("--capture-worker cần đường dẫn file PNG"))?;
-                options.capture_worker = Some(path);
-            }
             _ => bail!("tham số không hỗ trợ: {arg}"),
         }
-    }
-
-    if options.capture.is_some() && options.capture_worker.is_some() {
-        bail!("không thể dùng đồng thời --capture và --capture-worker");
     }
 
     Ok(options)
