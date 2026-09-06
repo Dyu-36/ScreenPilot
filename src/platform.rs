@@ -1,6 +1,5 @@
-// Re-export các hàm nền tảng theo hệ điều hành.
-// Mỗi module nền tảng phải xuất các hàm: install_autostart, remove_autostart,
-// capture_screen, show_info, show_error.
+// Re-export các hàm nền tảng dùng bởi agent/UI.
+// Screenshot nằm trong binary tack-capture riêng để agent nền không link graphics stack.
 #[cfg(target_os = "windows")]
 pub use crate::windows::*;
 
