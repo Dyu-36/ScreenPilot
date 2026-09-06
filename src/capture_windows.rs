@@ -161,9 +161,8 @@ fn encode_png_with_wic(bitmap: HBITMAP, output: &Path) -> Result<()> {
             .context("không tạo được WIC PNG frame")?;
         let frame = frame.ok_or_else(|| anyhow!("WIC không trả PNG frame"))?;
 
-        // Không cần encoder options cho PNG mặc định; NULL hợp lệ với WIC.
         frame
-            .Initialize(None)
+            .Initialize(properties.as_ref())
             .context("không khởi tạo được WIC PNG frame")?;
         frame
             .WriteSource(&source, std::ptr::null())
