@@ -17,11 +17,13 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# xcap chỉ tồn tại ở capture worker của Linux; Windows không kéo dependency này.
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 xcap = "0.9.8"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
+# windows crate chỉ được source của tack-capture tham chiếu để dùng GDI/WIC.
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -45,6 +47,10 @@ path = "src/main.rs"
 name = "tack-ui"
 path = "src/bin/tack-ui.rs"
 required-features = ["ui"]
+
+[[bin]]
+name = "tack-capture"
+path = "src/bin/tack-capture.rs"
 
 [profile.release]
 opt-level = 3
