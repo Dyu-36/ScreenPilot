@@ -24,7 +24,7 @@ mod linux;
 
 use std::{
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -34,7 +34,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use eframe::egui;
 
 pub(crate) static SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -120,6 +120,23 @@ fn run_gui(shared: agent::Shared) -> Result<()> {
     }
 
     result.map_err(|err| anyhow::anyhow!("gui error: {err}"))
+}
+
+/// agent.rs được dùng chung cho UI và headless binary. Nếu người dùng gửi /screenshot
+/// trong lúc GUI đang mở, vẫn buộc capture chạy ở tack-agent.exe ngắn hạn để process
+/// GUI không bao giờ giữ framebuffer/GDI/WIC allocations sau khi chụp.
+pub(crate) fn capture_screen_isolated(output: &Path) -> Result<()> {
+    let agent = sibling_executable("tack-agent")?;
+    let status = Command::new(&agent)
+        .arg("--capture-worker")
+        .arg(output)
+        .status()
+        .with_context(|| format!("không khởi động được screenshot worker {}", agent.display()))?;
+
+    if !status.success() {
+        bail!("screenshot worker thoát với trạng thái {status}");
+    }
+    Ok(())
 }
 
 pub(crate) fn spawn_background_after_exit() -> Result<()> {
