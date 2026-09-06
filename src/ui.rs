@@ -102,15 +102,12 @@ impl TackApp {
             return;
         }
 
-        // Process headless mới đang chờ single-instance được nhả. Đóng GUI thật sự
-        // thay vì chỉ ẩn để toàn bộ eframe/wgpu/windowing memory được OS thu hồi.
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
 
 impl eframe::App for TackApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Nút X cũng là "chạy nền": spawn process headless kế nhiệm rồi cho GUI đóng.
         if ctx.input(|input| input.viewport().close_requested()) {
             if let Err(err) = crate::spawn_background_after_exit() {
                 state::append_log(&format!("cannot restore background on window close: {err:#}"));
@@ -122,7 +119,6 @@ impl eframe::App for TackApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
 
-        // Pair session kết thúc?
         if let Some(pair) = &self.pair {
             let outcome = pair.result.lock().unwrap().clone();
             if let Some(outcome) = outcome {
@@ -142,12 +138,11 @@ impl eframe::App for TackApp {
 
         let view = self.current_view();
 
-        // Footer vẽ bằng bottom panel để luôn hiển thị dưới ScrollArea.
         egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new(format!(
-                    "Đóng/Ẩn giao diện sẽ trả về agent headless để giảm RAM. Log: {}",
+                    "Đóng/Ẩn giao diện sẽ trả về Manager chạy nền để giảm RAM. Log: {}",
                     state::config_dir().join("agent.log").display()
                 ))
                 .small()
@@ -167,7 +162,7 @@ impl eframe::App for TackApp {
 impl TackApp {
     fn render_token_input(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, adding: bool) {
         ui.vertical_centered(|ui| {
-            ui.heading("Tack Agent");
+            ui.heading("Manager");
         });
         ui.add_space(12.0);
         ui.label(if adding {
@@ -256,7 +251,7 @@ impl TackApp {
 
     fn render_manage(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
-            ui.heading("Tack Agent");
+            ui.heading("Manager");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Ẩn").clicked() {
                     self.close_to_background(ctx);
@@ -265,7 +260,7 @@ impl TackApp {
         });
         ui.label(
             egui::RichText::new(
-                "GUI chỉ chạy khi cần quản lý. Nhấn Ẩn để thoát GUI và tiếp tục bằng agent headless nhẹ RAM.",
+                "GUI chỉ chạy khi cần quản lý. Nhấn Ẩn để thoát GUI và tiếp tục bằng Manager chạy nền nhẹ RAM.",
             )
             .small(),
         );
@@ -356,8 +351,6 @@ impl TackApp {
     }
 }
 
-/// Font mặc định của egui thiếu nhiều glyph tiếng Việt (ế, ị, ề, ổ…).
-/// Nạp font hệ thống có hỗ trợ tiếng Việt làm font chính.
 fn install_vietnamese_font(ctx: &egui::Context) {
     const CANDIDATES: &[&str] = &[
         "C:\\Windows\\Fonts\\segoeui.ttf",
@@ -445,11 +438,7 @@ fn spawn_pair_session(shared: Shared, token: String, ctx: egui::Context) -> Pair
                             let chat_id = update.chat_id.clone();
                             shared.with_config(|config| {
                                 if let Some(bot) = config.bot_by_token_mut(&token) {
-                                    if !bot
-                                        .devices
-                                        .iter()
-                                        .any(|device| device.chat_id == chat_id)
-                                    {
+                                    if !bot.devices.iter().any(|device| device.chat_id == chat_id) {
                                         bot.devices.push(Device {
                                             chat_id: chat_id.clone(),
                                             paired_at_unix: state::unix_seconds(),
@@ -478,7 +467,7 @@ fn spawn_pair_session(shared: Shared, token: String, ctx: egui::Context) -> Pair
                                 &client,
                                 &token,
                                 &chat_id,
-                                "✅ Tack Agent đã ghép cặp thành công. Từ giờ dùng /screenshot, /status, /help hoặc /unpair.",
+                                "✅ Manager đã ghép cặp thành công. Từ giờ dùng /screenshot, /status, /help hoặc /unpair.",
                             );
                             state::append_log("pairing succeeded; autostart installed");
                             return finish(Ok(chat_id));
