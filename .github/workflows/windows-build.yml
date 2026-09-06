@@ -1,4 +1,4 @@
-name: Build Tack Agent for Windows
+name: Build Manager for Windows
 
 on:
   workflow_dispatch:
@@ -20,7 +20,6 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      # Chỉ build khi chạy thủ công; không auto-check mỗi lần push.
       - name: Build release
         run: cargo build --release
 
@@ -28,9 +27,9 @@ jobs:
         shell: pwsh
         run: |
           $files = @(
-            "target\release\tack-agent.exe",
-            "target\release\tack-ui.exe",
-            "target\release\tack-capture.exe"
+            "target\release\Manager.exe",
+            "target\release\ManagerUI.exe",
+            "target\release\ManagerCapture.exe"
           )
           foreach ($file in $files) {
             if (!(Test-Path $file)) {
@@ -42,10 +41,10 @@ jobs:
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
         with:
-          name: tack-agent-windows
+          name: manager-windows
           path: |
-            target/release/tack-agent.exe
-            target/release/tack-ui.exe
-            target/release/tack-capture.exe
+            target/release/Manager.exe
+            target/release/ManagerUI.exe
+            target/release/ManagerCapture.exe
           if-no-files-found: error
           retention-days: 30
