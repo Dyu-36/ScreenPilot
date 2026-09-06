@@ -1,5 +1,5 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-#![allow(dead_code)] // shared modules expose APIs used by tack-agent; lint is per binary.
+#![allow(dead_code)] // shared modules also serve Manager.exe.
 
 #[path = "../agent.rs"]
 mod agent;
@@ -45,7 +45,7 @@ static BACKGROUND_HANDOFF_STARTED: AtomicBool = AtomicBool::new(false);
 fn main() {
     if let Err(err) = run() {
         state::append_log(&format!("ui fatal: {err:#}"));
-        platform::show_error(&format!("Tack UI không thể khởi động:\n\n{err:#}"));
+        platform::show_error(&format!("ManagerUI không thể khởi động:\n\n{err:#}"));
         std::process::exit(1);
     }
 }
@@ -60,11 +60,8 @@ fn run() -> Result<()> {
         let _ = platform::install_autostart();
     }
 
-    // Trong lúc GUI mở, GUI tạm tiếp quản poller để các thay đổi config/pair có hiệu lực
-    // ngay. Khi GUI đóng, tack-agent.exe headless được khởi động lại.
     let shared = agent::Shared::new(config);
     agent::spawn(shared.clone());
-
     run_gui(shared)
 }
 
@@ -73,8 +70,6 @@ fn acquire_ui_instance() -> Result<bool> {
         return Ok(true);
     }
 
-    // Nếu owner hiện tại là headless agent, event này yêu cầu nó thoát để nhả mutex/socket.
-    // Nếu owner là một tack-ui khác, event chỉ focus cửa sổ đó; process này sẽ tự thoát.
     ipc::notify_show();
 
     for _ in 0..30 {
@@ -99,14 +94,14 @@ fn try_acquire_ui() -> Result<bool> {
 fn run_gui(shared: agent::Shared) -> Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Tack Agent")
+            .with_title("Manager")
             .with_inner_size([440.0, 580.0])
             .with_visible(true),
         ..Default::default()
     };
 
     let result = eframe::run_native(
-        "Tack Agent",
+        "Manager",
         native_options,
         Box::new(move |cc| {
             let _ = UI_CONTEXT.set(cc.egui_ctx.clone());
@@ -116,31 +111,42 @@ fn run_gui(shared: agent::Shared) -> Result<()> {
 
     if !BACKGROUND_HANDOFF_STARTED.load(Ordering::SeqCst) {
         if let Err(err) = spawn_background_after_exit() {
-            state::append_log(&format!("cannot restore headless agent after UI exit: {err:#}"));
+            state::append_log(&format!("cannot restore Manager background after UI exit: {err:#}"));
         }
     }
 
     result.map_err(|err| anyhow::anyhow!("gui error: {err}"))
 }
 
-/// agent.rs được dùng chung cho UI và headless binary. Screenshot luôn chạy trong
-/// tack-capture one-shot nên GUI cũng không giữ framebuffer/GDI/WIC allocations.
 pub(crate) fn capture_screen_isolated(output: &Path) -> Result<()> {
-    let capture = sibling_executable("tack-capture")?;
+    let capture = sibling_executable("ManagerCapture")?;
     if !capture.exists() {
         bail!(
-            "không tìm thấy {}. Hãy build/copy tack-capture cùng thư mục",
+            "không tìm thấy {}. Hãy build/copy ManagerCapture.exe cùng thư mục",
             capture.display()
         );
     }
 
-    let status = Command::new(&capture)
+    let result = Command::new(&capture)
         .arg(output)
-        .status()
+        .output()
         .with_context(|| format!("không khởi động được {}", capture.display()))?;
 
-    if !status.success() {
-        bail!("tack-capture thoát với trạng thái {status}");
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit status {}", result.status)
+        };
+        bail!("ManagerCapture thất bại: {detail}");
+    }
+
+    if !output.is_file() {
+        bail!("ManagerCapture không tạo file {}", output.display());
     }
     Ok(())
 }
@@ -151,11 +157,11 @@ pub(crate) fn spawn_background_after_exit() -> Result<()> {
     }
 
     let result = (|| -> Result<()> {
-        let agent = sibling_executable("tack-agent")?;
-        Command::new(&agent)
+        let manager = sibling_executable("Manager")?;
+        Command::new(&manager)
             .args(["--background", "--wait-for-instance"])
             .spawn()
-            .with_context(|| format!("không khởi động được {}", agent.display()))?;
+            .with_context(|| format!("không khởi động được {}", manager.display()))?;
         Ok(())
     })();
 
@@ -166,7 +172,7 @@ pub(crate) fn spawn_background_after_exit() -> Result<()> {
 }
 
 fn sibling_executable(stem: &str) -> Result<PathBuf> {
-    let mut path = env::current_exe().context("không xác định được đường dẫn Tack UI")?;
+    let mut path = env::current_exe().context("không xác định được đường dẫn ManagerUI")?;
     #[cfg(target_os = "windows")]
     path.set_file_name(format!("{stem}.exe"));
     #[cfg(not(target_os = "windows"))]
