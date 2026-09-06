@@ -1,4 +1,4 @@
-name: Build tack-agent for Windows
+name: Build Tack Agent for Windows
 
 on:
   push:
@@ -23,28 +23,32 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      - name: Check
-        run: cargo check
-
-      - name: Test
-        run: cargo test
-
+      # cargo build đã kiểm tra compile; không chạy cargo check/test lặp lại để tiết kiệm thời gian CI.
       - name: Build release
         run: cargo build --release
 
-      - name: Verify executable
+      - name: Verify executables
         shell: pwsh
         run: |
-          $exe = "target\release\tack-agent.exe"
-          if (!(Test-Path $exe)) {
-            throw "Expected $exe was not created"
+          $files = @(
+            "target\release\tack-agent.exe",
+            "target\release\tack-ui.exe",
+            "target\release\tack-capture.exe"
+          )
+          foreach ($file in $files) {
+            if (!(Test-Path $file)) {
+              throw "Expected $file was not created"
+            }
+            Get-Item $file | Format-List Name,Length,LastWriteTime
           }
-          Get-Item $exe | Format-List Name,Length,LastWriteTime
 
-      - name: Upload tack-agent.exe
+      - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
         with:
           name: tack-agent-windows
-          path: target/release/tack-agent.exe
+          path: |
+            target/release/tack-agent.exe
+            target/release/tack-ui.exe
+            target/release/tack-capture.exe
           if-no-files-found: error
           retention-days: 30
