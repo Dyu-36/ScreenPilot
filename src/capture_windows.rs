@@ -15,7 +15,7 @@ use ::windows::{
             },
             Imaging::{
                 IWICImagingFactory, CLSID_WICImagingFactory, GUID_ContainerFormatPng,
-                GUID_VendorMicrosoft, WICBitmapEncoderNoCache, WICBitmapIgnoreAlpha,
+                WICBitmapEncoderNoCache, WICBitmapIgnoreAlpha,
             },
         },
         System::Com::{
@@ -147,8 +147,9 @@ fn encode_png_with_wic(bitmap: HBITMAP, output: &Path) -> Result<()> {
             .InitializeFromFilename(PCWSTR(output_wide.as_ptr()), GENERIC_WRITE.0)
             .context("WIC không mở được file PNG đầu ra")?;
 
+        // Vendor = NULL: để WIC chọn PNG encoder mặc định của Windows.
         let encoder = factory
-            .CreateEncoder(&GUID_ContainerFormatPng, &GUID_VendorMicrosoft)
+            .CreateEncoder(&GUID_ContainerFormatPng, std::ptr::null())
             .context("không tạo được WIC PNG encoder")?;
         encoder
             .Initialize(&stream, WICBitmapEncoderNoCache)
