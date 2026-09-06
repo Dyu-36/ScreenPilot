@@ -122,19 +122,24 @@ fn run_gui(shared: agent::Shared) -> Result<()> {
     result.map_err(|err| anyhow::anyhow!("gui error: {err}"))
 }
 
-/// agent.rs được dùng chung cho UI và headless binary. Nếu người dùng gửi /screenshot
-/// trong lúc GUI đang mở, vẫn buộc capture chạy ở tack-agent.exe ngắn hạn để process
-/// GUI không bao giờ giữ framebuffer/GDI/WIC allocations sau khi chụp.
+/// agent.rs được dùng chung cho UI và headless binary. Screenshot luôn chạy trong
+/// tack-capture one-shot nên GUI cũng không giữ framebuffer/GDI/WIC allocations.
 pub(crate) fn capture_screen_isolated(output: &Path) -> Result<()> {
-    let agent = sibling_executable("tack-agent")?;
-    let status = Command::new(&agent)
-        .arg("--capture-worker")
+    let capture = sibling_executable("tack-capture")?;
+    if !capture.exists() {
+        bail!(
+            "không tìm thấy {}. Hãy build/copy tack-capture cùng thư mục",
+            capture.display()
+        );
+    }
+
+    let status = Command::new(&capture)
         .arg(output)
         .status()
-        .with_context(|| format!("không khởi động được screenshot worker {}", agent.display()))?;
+        .with_context(|| format!("không khởi động được {}", capture.display()))?;
 
     if !status.success() {
-        bail!("screenshot worker thoát với trạng thái {status}");
+        bail!("tack-capture thoát với trạng thái {status}");
     }
     Ok(())
 }
