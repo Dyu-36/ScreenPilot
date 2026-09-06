@@ -43,12 +43,12 @@ path = "src/main.rs"
 
 [[bin]]
 name = "ManagerUI"
-path = "src/bin/tack-ui.rs"
+path = "src/bin/manager-ui.rs"
 required-features = ["ui"]
 
 [[bin]]
 name = "ManagerCapture"
-path = "src/bin/tack-capture.rs"
+path = "src/bin/manager-capture.rs"
 
 [profile.release]
 opt-level = 3
