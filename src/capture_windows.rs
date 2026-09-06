@@ -55,7 +55,7 @@ impl OwnedBitmap {
                 return Err(anyhow!("GetDC không lấy được desktop DC"));
             }
 
-            let memory_dc = CreateCompatibleDC(Some(screen_dc));
+            let memory_dc = CreateCompatibleDC(screen_dc);
             if memory_dc.is_invalid() {
                 ReleaseDC(None, screen_dc);
                 return Err(anyhow!("CreateCompatibleDC thất bại"));
@@ -82,7 +82,7 @@ impl OwnedBitmap {
                 0,
                 width,
                 height,
-                Some(screen_dc),
+                screen_dc,
                 0,
                 0,
                 SRCCOPY | CAPTUREBLT,
