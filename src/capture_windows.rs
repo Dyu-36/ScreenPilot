@@ -57,22 +57,22 @@ impl OwnedBitmap {
 
             let memory_dc = CreateCompatibleDC(screen_dc);
             if memory_dc.is_invalid() {
-                ReleaseDC(None, screen_dc);
+                let _ = ReleaseDC(None, screen_dc);
                 return Err(anyhow!("CreateCompatibleDC thất bại"));
             }
 
             let bitmap = CreateCompatibleBitmap(screen_dc, width, height);
             if bitmap.is_invalid() {
-                DeleteDC(memory_dc);
-                ReleaseDC(None, screen_dc);
+                let _ = DeleteDC(memory_dc);
+                let _ = ReleaseDC(None, screen_dc);
                 return Err(anyhow!("CreateCompatibleBitmap thất bại"));
             }
 
             let previous_object = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
             if previous_object.is_invalid() {
-                DeleteObject(HGDIOBJ(bitmap.0));
-                DeleteDC(memory_dc);
-                ReleaseDC(None, screen_dc);
+                let _ = DeleteObject(HGDIOBJ(bitmap.0));
+                let _ = DeleteDC(memory_dc);
+                let _ = ReleaseDC(None, screen_dc);
                 return Err(anyhow!("SelectObject bitmap thất bại"));
             }
 
@@ -89,12 +89,12 @@ impl OwnedBitmap {
             );
 
             // Bitmap phải được bỏ khỏi memory DC trước khi xóa DC / đưa sang WIC.
-            SelectObject(memory_dc, previous_object);
-            DeleteDC(memory_dc);
-            ReleaseDC(None, screen_dc);
+            let _ = SelectObject(memory_dc, previous_object);
+            let _ = DeleteDC(memory_dc);
+            let _ = ReleaseDC(None, screen_dc);
 
             if let Err(err) = capture_result {
-                DeleteObject(HGDIOBJ(bitmap.0));
+                let _ = DeleteObject(HGDIOBJ(bitmap.0));
                 return Err(err).context("BitBlt không chụp được màn hình");
             }
 
@@ -106,7 +106,7 @@ impl OwnedBitmap {
 impl Drop for OwnedBitmap {
     fn drop(&mut self) {
         unsafe {
-            DeleteObject(HGDIOBJ(self.0.0));
+            let _ = DeleteObject(HGDIOBJ(self.0.0));
         }
     }
 }
