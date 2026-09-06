@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("tack-capture: {err:#}");
+        eprintln!("ManagerCapture: {err:#}");
         std::process::exit(1);
     }
 }
