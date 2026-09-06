@@ -10,8 +10,9 @@ use ::windows::{
         Foundation::GENERIC_WRITE,
         Graphics::{
             Gdi::{
-                BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
-                HBITMAP, HGDIOBJ, HPALETTE, ReleaseDC, SelectObject, CAPTUREBLT, SRCCOPY,
+                BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
+                GetDC, GetDeviceCaps, HBITMAP, HGDIOBJ, HPALETTE, ReleaseDC, SelectObject,
+                CAPTUREBLT, DESKTOPHORZRES, DESKTOPVERTRES, SRCCOPY,
             },
             Imaging::{
                 IWICImagingFactory, CLSID_WICImagingFactory, GUID_ContainerFormatPng,
@@ -22,12 +23,15 @@ use ::windows::{
             CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
             COINIT_MULTITHREADED,
         },
-        UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN},
     },
 };
 
 /// Native Windows capture: GDI -> HBITMAP -> WIC PNG.
 /// Không có xcap, không tạo full-screen RGBA Vec trong Rust và encoder chạy no-cache.
+///
+/// Với Windows display scaling 125%/150%, GetSystemMetrics có thể trả logical pixels,
+/// làm ảnh chỉ chụp được một góc màn hình. DESKTOPHORZRES/DESKTOPVERTRES lấy kích
+/// thước desktop vật lý từ screen DC nên chụp đủ primary monitor bất kể DPI scaling.
 pub fn capture_screen(output: &Path) -> Result<()> {
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).context("không tạo được thư mục lưu screenshot")?;
@@ -44,15 +48,16 @@ struct OwnedBitmap(HBITMAP);
 impl OwnedBitmap {
     fn capture_primary_screen() -> Result<Self> {
         unsafe {
-            let width = GetSystemMetrics(SM_CXSCREEN);
-            let height = GetSystemMetrics(SM_CYSCREEN);
-            if width <= 0 || height <= 0 {
-                return Err(anyhow!("Windows trả kích thước màn hình không hợp lệ"));
-            }
-
             let screen_dc = GetDC(None);
             if screen_dc.is_invalid() {
                 return Err(anyhow!("GetDC không lấy được desktop DC"));
+            }
+
+            let width = GetDeviceCaps(screen_dc, DESKTOPHORZRES);
+            let height = GetDeviceCaps(screen_dc, DESKTOPVERTRES);
+            if width <= 0 || height <= 0 {
+                let _ = ReleaseDC(None, screen_dc);
+                return Err(anyhow!("Windows trả kích thước màn hình vật lý không hợp lệ"));
             }
 
             let memory_dc = CreateCompatibleDC(screen_dc);
@@ -88,7 +93,6 @@ impl OwnedBitmap {
                 SRCCOPY | CAPTUREBLT,
             );
 
-            // Bitmap phải được bỏ khỏi memory DC trước khi xóa DC / đưa sang WIC.
             let _ = SelectObject(memory_dc, previous_object);
             let _ = DeleteDC(memory_dc);
             let _ = ReleaseDC(None, screen_dc);
@@ -125,7 +129,6 @@ fn encode_png_with_wic(bitmap: HBITMAP, output: &Path) -> Result<()> {
         )
         .context("không tạo được WIC imaging factory")?;
 
-        // WIC đọc trực tiếp HBITMAP: không cần copy sang Vec<u8> kích thước toàn màn hình.
         let source = factory
             .CreateBitmapFromHBITMAP(bitmap, HPALETTE::default(), WICBitmapIgnoreAlpha)
             .context("WIC không nhận được GDI bitmap")?;
@@ -140,7 +143,6 @@ fn encode_png_with_wic(bitmap: HBITMAP, output: &Path) -> Result<()> {
             .InitializeFromFilename(PCWSTR(output_wide.as_ptr()), GENERIC_WRITE.0)
             .context("WIC không mở được file PNG đầu ra")?;
 
-        // Vendor = NULL: để WIC chọn PNG encoder mặc định của Windows.
         let encoder = factory
             .CreateEncoder(&GUID_ContainerFormatPng, std::ptr::null())
             .context("không tạo được WIC PNG encoder")?;
