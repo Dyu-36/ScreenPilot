@@ -1,9 +1,9 @@
 [package]
-name = "tack-agent"
+name = "manager"
 version = "2.0.0"
 edition = "2024"
-description = "Cross-platform agent controlled from a paired Zalo chat"
-default-run = "tack-ui"
+description = "Lightweight cross-platform manager controlled from a paired Zalo chat"
+default-run = "ManagerUI"
 
 [features]
 default = ["ui"]
@@ -17,13 +17,11 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# xcap chỉ tồn tại ở capture worker của Linux; Windows không kéo dependency này.
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 xcap = "0.9.8"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
-# windows crate chỉ được source của tack-capture tham chiếu để dùng GDI/WIC.
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -40,16 +38,16 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [[bin]]
-name = "tack-agent"
+name = "Manager"
 path = "src/main.rs"
 
 [[bin]]
-name = "tack-ui"
+name = "ManagerUI"
 path = "src/bin/tack-ui.rs"
 required-features = ["ui"]
 
 [[bin]]
-name = "tack-capture"
+name = "ManagerCapture"
 path = "src/bin/tack-capture.rs"
 
 [profile.release]
