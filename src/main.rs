@@ -1,5 +1,5 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-#![allow(dead_code)] // shared modules expose APIs used by tack-ui; lint is per binary.
+#![allow(dead_code)] // shared modules expose APIs used by ManagerUI; lint is per binary.
 
 mod agent;
 mod ipc;
@@ -44,7 +44,7 @@ fn main() {
     if let Err(err) = run(options) {
         state::append_log(&format!("fatal: {err:#}"));
         if !silent {
-            platform::show_error(&format!("Tack Agent không thể khởi động:\n\n{err:#}"));
+            platform::show_error(&format!("Manager không thể khởi động:\n\n{err:#}"));
         }
         std::process::exit(1);
     }
@@ -62,7 +62,6 @@ fn run(options: Options) -> Result<()> {
         return Ok(());
     }
 
-    // tack-agent.exe không chứa GUI. Chạy không tham số chỉ mở tack-ui.exe.
     if !options.background {
         launch_ui()?;
         return Ok(());
@@ -82,7 +81,7 @@ fn run(options: Options) -> Result<()> {
 
     let shared = agent::Shared::new(config);
     agent::spawn(shared);
-    state::append_log("headless agent started (GUI/capture-free binary)");
+    state::append_log("Manager background started (GUI/capture-free binary)");
 
     loop {
         thread::park();
@@ -92,9 +91,7 @@ fn run(options: Options) -> Result<()> {
 fn acquire_background_instance(wait_for_instance: bool) -> Result<bool> {
     loop {
         let acquired = ipc::acquire_single_instance(|| {
-            // tack-ui.exe gửi event này trước khi nhận quyền single-instance.
-            // Agent nền thoát ngay để UI có thể tiếp quản polling/config.
-            state::append_log("headless agent releasing instance for UI");
+            state::append_log("Manager background releasing instance for UI");
             std::process::exit(0);
         })?;
 
@@ -109,10 +106,10 @@ fn acquire_background_instance(wait_for_instance: bool) -> Result<bool> {
 }
 
 fn launch_ui() -> Result<()> {
-    let ui = sibling_executable("tack-ui")?;
+    let ui = sibling_executable("ManagerUI")?;
     if !ui.exists() {
         bail!(
-            "không tìm thấy {}. Hãy build/copy tack-ui cùng thư mục với tack-agent",
+            "không tìm thấy {}. Hãy build/copy ManagerUI.exe cùng thư mục với Manager.exe",
             ui.display()
         );
     }
@@ -123,29 +120,47 @@ fn launch_ui() -> Result<()> {
     Ok(())
 }
 
-/// Screenshot là process one-shot riêng. tack-agent.exe thường trú không link GDI/WIC/xcap.
 pub(crate) fn capture_screen_isolated(output: &Path) -> Result<()> {
-    let capture = sibling_executable("tack-capture")?;
+    let capture = sibling_executable("ManagerCapture")?;
     if !capture.exists() {
         bail!(
-            "không tìm thấy {}. Hãy build/copy tack-capture cùng thư mục với tack-agent",
+            "không tìm thấy {}. Hãy build/copy ManagerCapture.exe cùng thư mục với Manager.exe",
             capture.display()
         );
     }
 
-    let status = Command::new(&capture)
+    let result = Command::new(&capture)
         .arg(output)
-        .status()
+        .output()
         .with_context(|| format!("không khởi động được {}", capture.display()))?;
 
-    if !status.success() {
-        bail!("tack-capture thoát với trạng thái {status}");
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit status {}", result.status)
+        };
+        bail!("ManagerCapture thất bại: {detail}");
+    }
+
+    if !output.is_file() {
+        bail!("ManagerCapture báo thành công nhưng không tạo file {}", output.display());
+    }
+    let size = std::fs::metadata(output)
+        .with_context(|| format!("không đọc được metadata {}", output.display()))?
+        .len();
+    if size == 0 {
+        bail!("ManagerCapture tạo file rỗng: {}", output.display());
     }
     Ok(())
 }
 
 fn sibling_executable(stem: &str) -> Result<PathBuf> {
-    let mut path = env::current_exe().context("không xác định được đường dẫn Tack Agent hiện tại")?;
+    let mut path = env::current_exe().context("không xác định được đường dẫn Manager hiện tại")?;
     #[cfg(target_os = "windows")]
     path.set_file_name(format!("{stem}.exe"));
     #[cfg(not(target_os = "windows"))]
@@ -154,7 +169,7 @@ fn sibling_executable(stem: &str) -> Result<PathBuf> {
 }
 
 fn local_help_text() -> &'static str {
-    "Tack Agent 2.0\n\nKiến trúc nhẹ:\n- tack-agent: headless poll/network, không GUI, không graphics capture\n- tack-ui: chỉ chạy khi mở giao diện\n- tack-capture: one-shot, chỉ chạy khi cần screenshot\n\nTùy chọn:\n--background  Chạy agent nền nhẹ\n--capture <path.png>  Chụp thử qua tack-capture\n--help  Hiện trợ giúp\n\nWindows capture dùng GDI + WIC native; xcap không còn được dùng trên Windows."
+    "Manager 2.0\n\nKiến trúc nhẹ:\n- Manager.exe: chạy nền poll/network, không GUI, không graphics capture\n- ManagerUI.exe: chỉ chạy khi mở giao diện\n- ManagerCapture.exe: one-shot, chỉ chạy khi cần screenshot\n\nTùy chọn:\n--background  Chạy Manager nền nhẹ\n--capture <path.png>  Chụp thử qua ManagerCapture\n--help  Hiện trợ giúp\n\nWindows capture dùng GDI + WIC native; xcap không dùng trên Windows."
 }
 
 fn parse_options() -> Result<Options> {
