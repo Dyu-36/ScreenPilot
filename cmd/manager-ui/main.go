@@ -22,6 +22,9 @@ func main() {
 }
 
 func run() error {
+	if err := platform.EnsureDesktopIntegration(); err != nil {
+		logging.Printf("desktop integration error: %v", err)
+	}
 	lock, acquired, err := acquireUI()
 	if err != nil {
 		return err
@@ -46,7 +49,7 @@ func run() error {
 	defer cancel()
 	go shared.Run(ctx)
 
-	logging.Append("startup: ManagerUI native Win32 started")
+	logging.Append("startup: ManagerUI started")
 	return ui.Run(shared)
 }
 

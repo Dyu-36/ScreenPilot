@@ -1,0 +1,58 @@
+name: Build Manager for Linux
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          files="$(gofmt -l ./cmd ./internal)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release
+        run: bash build-release.sh
+
+      - name: Verify binaries
+        run: test -x dist/Manager && test -x dist/ManagerUI && test -x dist/ManagerCapture
+
+      - name: Upload Linux binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: manager-linux-amd64
+          path: |
+            dist/Manager
+            dist/ManagerUI
+            dist/ManagerCapture
+          if-no-files-found: error
+          retention-days: 30

@@ -40,7 +40,7 @@ func main() {
 
 func run(opts options) error {
 	if opts.help {
-		platform.ShowInfo("Manager\n\nManager.exe: mở giao diện\nManager.exe --background: chạy nền\nManager.exe --capture <path.png>: chụp qua worker one-shot")
+		platform.ShowInfo("Manager\n\nManager: mở giao diện\nManager --background: chạy nền\nManager --capture <path.png>: chụp qua worker one-shot")
 		return nil
 	}
 	if opts.capture != "" {
@@ -49,6 +49,9 @@ func run(opts options) error {
 		}
 		platform.ShowInfo("Đã chụp màn hình:\n" + opts.capture)
 		return nil
+	}
+	if err := platform.EnsureDesktopIntegration(); err != nil {
+		logging.Printf("desktop integration error: %v", err)
 	}
 	if !opts.background {
 		return worker.StartSibling("ManagerUI")

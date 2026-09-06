@@ -71,6 +71,8 @@ func RemoveAutostart() error {
 	return nil
 }
 
+func EnsureDesktopIntegration() error { return nil }
+
 func managerExecutable() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {

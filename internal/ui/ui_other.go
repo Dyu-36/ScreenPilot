@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package ui
 
@@ -9,7 +9,7 @@ import (
 )
 
 func Run(*agent.Shared) error {
-	return fmt.Errorf("ManagerUI chỉ hỗ trợ Windows")
+	return fmt.Errorf("ManagerUI chưa hỗ trợ hệ điều hành này")
 }
 
 func RequestFocus() {}
