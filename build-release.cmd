@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-if "%VERSION%"=="" set VERSION=3.0.0
+if "%VERSION%"=="" set VERSION=3.0.1
 
 echo [Manager] Stopping running processes...
 for %%P in (Manager.exe ManagerUI.exe ManagerCapture.exe) do (

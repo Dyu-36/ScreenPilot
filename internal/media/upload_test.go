@@ -49,3 +49,13 @@ func TestUploadImageUntilAcceptedFallsBackAfterRejection(t *testing.T) {
 		t.Fatalf("providers=%v want=%v", providers, want)
 	}
 }
+
+func TestDefaultUploadProvidersPreferZaloCompatibleHosts(t *testing.T) {
+	providers := make([]string, 0, len(imageUploadAttempts))
+	for _, attempt := range imageUploadAttempts {
+		providers = append(providers, attempt.name)
+	}
+	if want := []string{"Uguu", "Litterbox"}; !reflect.DeepEqual(providers, want) {
+		t.Fatalf("providers=%v want=%v", providers, want)
+	}
+}
