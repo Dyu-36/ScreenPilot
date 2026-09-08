@@ -8,11 +8,11 @@ import (
 
 func TestParseNestedUpdate(t *testing.T) {
 	var v any
-	if err := json.Unmarshal([]byte(`{"updates":[{"update_id":41,"message":{"chat":{"id":"chat-7"},"text":"/screenshot"}}]}`), &v); err != nil {
+	if err := json.Unmarshal([]byte(`{"updates":[{"update_id":41,"message":{"chat":{"id":"chat-7"},"text":"/anh"}}]}`), &v); err != nil {
 		t.Fatal(err)
 	}
 	got := parseUpdates(v)
-	if len(got) != 1 || got[0].ChatID != "chat-7" || got[0].Text != "/screenshot" || got[0].UpdateID == nil || *got[0].UpdateID != 41 {
+	if len(got) != 1 || got[0].ChatID != "chat-7" || got[0].Text != "/anh" || got[0].UpdateID == nil || *got[0].UpdateID != 41 {
 		t.Fatalf("got %#v", got)
 	}
 }
