@@ -22,6 +22,24 @@ type Update struct {
 	Text     string
 }
 
+type APIError struct {
+	Method      string
+	Code        int64
+	Description string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("Zalo %s failed (%d): %s", e.Method, e.Code, e.Description)
+}
+
+func ErrorCode(err error) (int64, bool) {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code, true
+	}
+	return 0, false
+}
+
 func NewHTTPClient() *http.Client {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -75,6 +93,9 @@ func SendPhotoURL(ctx context.Context, client *http.Client, token, chatID, photo
 	}, 45*time.Second)
 	if err == nil {
 		return nil
+	}
+	if code, ok := ErrorCode(err); ok && code == 424 {
+		return err
 	}
 
 	_, fallbackErr := call(ctx, client, token, "sendPhoto", map[string]any{
@@ -140,7 +161,7 @@ func call(parent context.Context, client *http.Client, token, method string, bod
 		if desc == "" {
 			desc = "unknown error"
 		}
-		return nil, fmt.Errorf("Zalo %s failed (%d): %s", method, code, desc)
+		return nil, &APIError{Method: method, Code: code, Description: desc}
 	}
 	return envelope["result"], nil
 }

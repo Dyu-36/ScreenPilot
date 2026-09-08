@@ -2,6 +2,7 @@ package zalo
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -25,4 +26,19 @@ func TestParseFlatNumericChat(t *testing.T) {
 	if len(got) != 1 || got[0].ChatID != "12345" || got[0].UpdateID == nil || *got[0].UpdateID != 55 {
 		t.Fatalf("got %#v", got)
 	}
+}
+
+func TestErrorCode(t *testing.T) {
+	err := fmtWrappedAPIError()
+	code, ok := ErrorCode(err)
+	if !ok || code != 424 {
+		t.Fatalf("code=%d ok=%v", code, ok)
+	}
+	if !errors.Is(err, err) {
+		t.Fatal("wrapped error should remain a valid error")
+	}
+}
+
+func fmtWrappedAPIError() error {
+	return &APIError{Method: "sendPhoto", Code: 424, Description: "invalid photo URL"}
 }

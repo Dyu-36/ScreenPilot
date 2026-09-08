@@ -313,18 +313,28 @@ func (s *Shared) handleScreenshot(ctx context.Context, token, chatID string) {
 		_ = zalo.SendMessage(ctx, s.client, token, chatID, "⚠️ Screenshot lỗi: "+shortError(err))
 		return
 	}
-	logging.Append("screenshot stage=capture: success")
-
-	url, err := media.UploadImage(ctx, s.client, path)
-	if err != nil {
-		logging.Printf("upload error: %v", err)
-		_ = zalo.SendMessage(ctx, s.client, token, chatID, "⚠️ Upload screenshot lỗi: "+shortError(err))
-		return
+	if info, statErr := os.Stat(path); statErr == nil {
+		logging.Printf("screenshot stage=capture: success bytes=%d", info.Size())
+	} else {
+		logging.Append("screenshot stage=capture: success")
 	}
-	logging.Append("screenshot stage=upload: success")
 
-	if err := zalo.SendPhotoURL(ctx, s.client, token, chatID, url, "📸 Screenshot từ "+machineName()); err != nil {
-		logging.Printf("Zalo send error: %v", err)
+	caption := "📸 Screenshot từ " + machineName()
+	err = media.UploadImageUntilAccepted(ctx, s.client, path, func(upload media.UploadedImage) (bool, error) {
+		logging.Printf("screenshot stage=upload: provider=%s success", upload.Provider)
+		sendErr := zalo.SendPhotoURL(ctx, s.client, token, chatID, upload.URL, caption)
+		if sendErr == nil {
+			logging.Printf("screenshot stage=send: provider=%s success", upload.Provider)
+			return false, nil
+		}
+		if code, ok := zalo.ErrorCode(sendErr); ok && code == 424 {
+			logging.Printf("screenshot stage=send: provider=%s rejected code=424", upload.Provider)
+			return true, sendErr
+		}
+		return false, sendErr
+	})
+	if err != nil {
+		logging.Printf("Zalo screenshot delivery error: %v", err)
 		_ = zalo.SendMessage(ctx, s.client, token, chatID, "⚠️ Gửi ảnh lỗi: "+shortError(err))
 		return
 	}
