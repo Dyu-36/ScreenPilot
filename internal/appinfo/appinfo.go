@@ -2,4 +2,4 @@ package appinfo
 
 const Name = "Manager"
 
-var Version = "3.0.1"
+var Version = "3.0.2"

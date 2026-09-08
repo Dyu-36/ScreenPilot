@@ -474,7 +474,9 @@ func (a *App) finishPair() {
 	_ = platform.InstallAutostart()
 	setWindowText(a.tokenEdit, "")
 	a.refreshAll()
-	setWindowText(a.statusText, "Đã ghép cặp với "+result.chatID+".")
+	setWindowText(a.statusText, "Đã ghép cặp với "+result.chatID+". Manager đang chuyển sang chạy nền.")
+	logging.Append("pairing: UI handoff to background after success")
+	a.closeToBackground()
 }
 
 func (a *App) updatePairCountdown() {

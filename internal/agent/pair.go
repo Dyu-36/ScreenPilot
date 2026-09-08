@@ -105,7 +105,7 @@ func (s *Shared) Pair(ctx context.Context, token, code string, ttl time.Duration
 				return "", err
 			}
 
-			_ = zalo.SendMessage(ctx, s.client, token, chatID, "✅ Manager đã ghép cặp thành công. Từ giờ dùng /screenshot, /status, /help hoặc /unpair.")
+			_ = zalo.SendMessage(ctx, s.client, token, chatID, "✅ Manager đã ghép cặp thành công. Từ giờ dùng /anh, /status, /help hoặc /unpair.")
 			logging.Append("pairing: succeeded")
 			return chatID, nil
 		}

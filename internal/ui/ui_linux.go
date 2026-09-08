@@ -51,8 +51,11 @@ func Run(shared *agent.Shared) error {
 
 		switch choice {
 		case "add":
-			if err := addBot(shared); err != nil {
+			paired, err := addBot(shared)
+			if err != nil {
 				showError(err.Error())
+			} else if paired {
+				return handoffToBackground()
 			}
 		case "bots":
 			if err := manageBots(shared); err != nil {
@@ -69,8 +72,11 @@ func Run(shared *agent.Shared) error {
 				showInfo("Chưa có bot đang hoạt động.")
 				continue
 			}
-			if err := pairToken(shared, bot.Token); err != nil {
+			paired, err := pairToken(shared, bot.Token)
+			if err != nil {
 				showError(err.Error())
+			} else if paired {
+				return handoffToBackground()
 			}
 		}
 	}
@@ -82,14 +88,14 @@ func RequestFocus() {
 	}
 }
 
-func addBot(shared *agent.Shared) error {
+func addBot(shared *agent.Shared) (bool, error) {
 	token, canceled, err := dialogOutput("--password", "Nhập Bot Token Zalo:")
 	if err != nil || canceled {
-		return err
+		return false, err
 	}
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return fmt.Errorf("token không được để trống")
+		return false, fmt.Errorf("token không được để trống")
 	}
 	return pairToken(shared, token)
 }
@@ -185,7 +191,7 @@ func manageDevices(shared *agent.Shared) error {
 	return nil
 }
 
-func pairToken(shared *agent.Shared, token string) error {
+func pairToken(shared *agent.Shared, token string) (bool, error) {
 	code := agent.GeneratePairCode()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -206,23 +212,23 @@ func pairToken(shared *agent.Shared, token string) error {
 	if err != nil {
 		cancel()
 		<-resultCh
-		return err
+		return false, err
 	}
 	if canceled {
 		cancel()
 		<-resultCh
-		return nil
+		return false, nil
 	}
 	passive("Đang chờ bot nhận "+command+" …", 3)
 	res := <-resultCh
 	if res.err != nil {
-		return res.err
+		return false, res.err
 	}
 	if err := platform.InstallAutostart(); err != nil {
 		logging.Printf("autostart error: %v", err)
 	}
-	showInfo("Đã ghép cặp thành công với " + res.chatID + ".")
-	return nil
+	showInfo("Đã ghép cặp thành công với " + res.chatID + ". Manager sẽ chuyển sang chạy nền.")
+	return true, nil
 }
 
 func handoffToBackground() error {

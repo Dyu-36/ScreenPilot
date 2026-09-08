@@ -258,7 +258,7 @@ func (s *Shared) dispatch(ctx context.Context, token string, update zalo.Update)
 	}
 	command := strings.ToLower(fields[0])
 	switch command {
-	case "/screenshot", "/screen", "/cap":
+	case "/anh":
 		s.handleScreenshot(ctx, token, update.ChatID)
 	case "/status", "/ping":
 		cfg := s.ConfigSnapshot()
@@ -363,5 +363,5 @@ func shortError(err error) string {
 }
 
 func helpText() string {
-	return "🤖 Manager\n\n/screenshot — chụp màn hình chính và gửi ảnh\n/status — kiểm tra Manager đang online\n/help — xem danh sách lệnh\n/unpair — gỡ thiết bị này khỏi Manager\n\nMọi Zalo đã pair đều điều khiển được Manager."
+	return "🤖 Manager\n\n/anh — chụp màn hình chính và gửi ảnh\n/status — kiểm tra Manager đang online\n/help — xem danh sách lệnh\n/unpair — gỡ thiết bị này khỏi Manager\n\nMọi Zalo đã pair đều điều khiển được Manager."
 }
