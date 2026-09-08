@@ -31,6 +31,8 @@ type Shared struct {
 
 	pairMu       sync.RWMutex
 	pairingToken string
+	pairGate     chan struct{}
+	updateMu     sync.Mutex
 
 	pollMu     sync.Mutex
 	pollCancel context.CancelFunc
@@ -39,9 +41,10 @@ type Shared struct {
 func New(cfg config.Config) *Shared {
 	cfg.Normalize()
 	return &Shared{
-		cfg:     cfg,
-		changed: make(chan struct{}, 1),
-		client:  zalo.NewHTTPClient(),
+		cfg:      cfg,
+		changed:  make(chan struct{}, 1),
+		client:   zalo.NewHTTPClient(),
+		pairGate: make(chan struct{}, 1),
 	}
 }
 
@@ -185,7 +188,15 @@ func (s *Shared) runActive(ctx context.Context, bot config.Bot) {
 
 		pollCtx, cancel := context.WithCancel(ctx)
 		s.registerPollCancel(cancel)
+		s.updateMu.Lock()
+		if s.isPairing(bot.Token) || pollCtx.Err() != nil {
+			s.updateMu.Unlock()
+			cancel()
+			s.clearPollCancel()
+			continue
+		}
 		updates, err := zalo.GetUpdates(pollCtx, s.client, bot.Token, offset, pollTimeout)
+		s.updateMu.Unlock()
 		cancel()
 		s.clearPollCancel()
 

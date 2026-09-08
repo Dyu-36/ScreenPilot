@@ -1,9 +1,14 @@
 package zalo
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseNestedUpdate(t *testing.T) {
@@ -34,11 +39,46 @@ func TestErrorCode(t *testing.T) {
 	if !ok || code != 424 {
 		t.Fatalf("code=%d ok=%v", code, ok)
 	}
-	if !errors.Is(err, err) {
-		t.Fatal("wrapped error should remain a valid error")
-	}
 }
 
 func fmtWrappedAPIError() error {
 	return &APIError{Method: "sendPhoto", Code: 424, Description: "invalid photo URL"}
+}
+
+type testTransport func(*http.Request) (*http.Response, error)
+
+func (f testTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func TestGetUpdatesCancellationDoesNotLeakToken(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+		cancel()
+		return nil, r.Context().Err()
+	})}
+	_, err := GetUpdates(ctx, client, "secret-token", nil, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation identity lost: %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Fatal("token leaked through transport error")
+	}
+}
+
+func TestGetUpdatesHTMLPreservesHTTPStatus(t *testing.T) {
+	client := &http.Client{Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 502,
+			Header:     http.Header{"Content-Type": []string{"text/html"}},
+			Body:       io.NopCloser(strings.NewReader("<html>secret-token upstream failure</html>")),
+		}, nil
+	})}
+	_, err := GetUpdates(context.Background(), client, "secret-token", nil, time.Second)
+	if code, ok := ErrorCode(err); !ok || code != 502 {
+		t.Fatalf("HTTP status lost: %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Fatal("response body leaked into error")
+	}
 }

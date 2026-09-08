@@ -27,8 +27,25 @@ func (s *Shared) Pair(ctx context.Context, token, code string, ttl time.Duration
 	if token == "" {
 		return "", fmt.Errorf("token không được để trống")
 	}
+	ctx, cancel := context.WithTimeout(ctx, ttl)
+	defer cancel()
+	select {
+	case s.pairGate <- struct{}{}:
+		defer func() { <-s.pairGate }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 	s.setPairingToken(token)
 	defer s.setPairingToken("")
+	// Wait for the cancelled background request before consuming pairing messages.
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := zalo.ValidateToken(ctx, s.client, token); err != nil {
+		return "", err
+	}
 
 	cfg := s.ConfigSnapshot()
 	var offset *int64
@@ -39,7 +56,7 @@ func (s *Shared) Pair(ctx context.Context, token, code string, ttl time.Duration
 
 	zalo.DeleteWebhook(ctx, s.client, token)
 	logging.Append("pairing: started")
-	deadline := time.Now().Add(ttl)
+	deadline, _ := ctx.Deadline()
 
 	for time.Now().Before(deadline) {
 		remaining := time.Until(deadline)
@@ -56,6 +73,9 @@ func (s *Shared) Pair(ctx context.Context, token, code string, ttl time.Duration
 				return "", ctx.Err()
 			}
 			logging.Printf("pairing poll error: %v", err)
+			if code, ok := zalo.ErrorCode(err); ok && code >= 400 && code < 500 && code != 408 && code != 429 {
+				return "", err
+			}
 			select {
 			case <-ctx.Done():
 				return "", ctx.Err()

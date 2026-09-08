@@ -54,6 +54,11 @@ func NewHTTPClient() *http.Client {
 	return &http.Client{Transport: transport}
 }
 
+func ValidateToken(ctx context.Context, client *http.Client, token string) error {
+	_, err := call(ctx, client, token, "getMe", map[string]any{}, 15*time.Second)
+	return err
+}
+
 func DeleteWebhook(ctx context.Context, client *http.Client, token string) {
 	_, _ = call(ctx, client, token, "deleteWebhook", map[string]any{}, 15*time.Second)
 }
@@ -132,6 +137,9 @@ func call(parent context.Context, client *http.Client, token, method string, bod
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		// Do not wrap url.Error: it contains the request URL, which embeds the bot token.
 		return nil, fmt.Errorf("Zalo %s: lỗi kết nối", method)
 	}
@@ -145,7 +153,7 @@ func call(parent context.Context, client *http.Client, token, method string, bod
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	if err := decoder.Decode(&envelope); err != nil {
-		return nil, fmt.Errorf("Zalo %s: phản hồi JSON không hợp lệ: %w", method, err)
+		return nil, &APIError{Method: method, Code: int64(resp.StatusCode), Description: "phản hồi không phải JSON (" + resp.Header.Get("Content-Type") + ")"}
 	}
 
 	ok, hasOK := envelope["ok"].(bool)

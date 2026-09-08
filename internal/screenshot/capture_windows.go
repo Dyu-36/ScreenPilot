@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"unsafe"
 )
@@ -58,6 +59,9 @@ var (
 )
 
 func CapturePrimary(output string) (err error) {
+	// A display DC must be used and released on the thread that acquired it.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if parent := filepath.Dir(output); parent != "." && parent != "" {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
 			return fmt.Errorf("không tạo được thư mục screenshot: %w", err)

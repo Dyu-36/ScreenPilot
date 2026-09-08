@@ -111,10 +111,11 @@ type App struct {
 	pairText    uintptr
 	statusText  uintptr
 
-	pairMu       sync.Mutex
-	pairCancel   context.CancelFunc
-	pairDeadline time.Time
-	pairResult   *pairResult
+	pairMu         sync.Mutex
+	pairCancel     context.CancelFunc
+	pairDeadline   time.Time
+	pairResult     *pairResult
+	pairGeneration uint64
 
 	handoff        atomic.Bool
 	focusRequested atomic.Bool
@@ -438,6 +439,8 @@ func (a *App) startPair(token string) {
 	code := agent.GeneratePairCode()
 	ctx, cancel := context.WithCancel(context.Background())
 	a.pairMu.Lock()
+	a.pairGeneration++
+	generation := a.pairGeneration
 	a.pairCancel = cancel
 	a.pairDeadline = time.Now().Add(60 * time.Second)
 	a.pairResult = nil
@@ -450,6 +453,10 @@ func (a *App) startPair(token string) {
 	go func() {
 		chatID, err := a.shared.Pair(ctx, token, code, 60*time.Second)
 		a.pairMu.Lock()
+		if generation != a.pairGeneration || a.pairCancel == nil {
+			a.pairMu.Unlock()
+			return
+		}
 		a.pairResult = &pairResult{chatID: chatID, err: err}
 		a.pairMu.Unlock()
 		procPostMessage.Call(a.hwnd, wmAppPairDone, 0, 0)
@@ -459,14 +466,19 @@ func (a *App) startPair(token string) {
 func (a *App) finishPair() {
 	a.pairMu.Lock()
 	result := a.pairResult
-	a.pairResult = nil
-	a.pairCancel = nil
-	a.pairMu.Unlock()
-	procKillTimer.Call(a.hwnd, timerPair)
-	setWindowText(a.pairText, "")
 	if result == nil {
+		a.pairMu.Unlock()
 		return
 	}
+	a.pairResult = nil
+	cancel := a.pairCancel
+	a.pairCancel = nil
+	a.pairMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	procKillTimer.Call(a.hwnd, timerPair)
+	setWindowText(a.pairText, "")
 	if result.err != nil {
 		setWindowText(a.statusText, "Ghép cặp lỗi: "+result.err.Error())
 		return
@@ -497,6 +509,7 @@ func (a *App) updatePairCountdown() {
 
 func (a *App) cancelPair() {
 	a.pairMu.Lock()
+	a.pairGeneration++
 	cancel := a.pairCancel
 	a.pairCancel = nil
 	a.pairResult = nil
