@@ -14,26 +14,73 @@ import (
 	"time"
 )
 
+type UploadedImage struct {
+	Provider string
+	URL      string
+}
+
+type uploadAttempt struct {
+	name string
+	fn   func(context.Context, *http.Client, string) (string, error)
+}
+
+var imageUploadAttempts = []uploadAttempt{
+	{"Litterbox", uploadLitterbox},
+	{"Tmpfiles", uploadTmpfiles},
+	{"0x0.st", upload0x0},
+	{"File.io", uploadFileIO},
+}
+
+// UploadImage preserves the previous behavior: return the first provider that
+// successfully uploads the image.
 func UploadImage(ctx context.Context, client *http.Client, path string) (string, error) {
-	type attempt struct {
-		name string
-		fn   func(context.Context, *http.Client, string) (string, error)
+	var result string
+	err := UploadImageUntilAccepted(ctx, client, path, func(upload UploadedImage) (bool, error) {
+		result = upload.URL
+		return false, nil
+	})
+	return result, err
+}
+
+// UploadImageUntilAccepted uploads through the configured providers in order.
+// The accept callback can request the next provider by returning retry=true
+// together with the rejection error. A non-retryable callback error is returned
+// immediately.
+func UploadImageUntilAccepted(ctx context.Context, client *http.Client, path string, accept func(UploadedImage) (retry bool, err error)) error {
+	if accept == nil {
+		return errors.New("callback chấp nhận ảnh trống")
 	}
-	attempts := []attempt{
-		{"Litterbox", uploadLitterbox},
-		{"Tmpfiles", uploadTmpfiles},
-		{"0x0.st", upload0x0},
-		{"File.io", uploadFileIO},
-	}
+
 	var errs []string
-	for _, a := range attempts {
-		url, err := a.fn(ctx, client, path)
-		if err == nil {
-			return url, nil
+	for _, attempt := range imageUploadAttempts {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		errs = append(errs, a.name+": "+err.Error())
+
+		imageURL, err := attempt.fn(ctx, client, path)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			errs = append(errs, attempt.name+": "+err.Error())
+			continue
+		}
+
+		retry, acceptErr := accept(UploadedImage{Provider: attempt.name, URL: imageURL})
+		if acceptErr == nil {
+			if retry {
+				errs = append(errs, attempt.name+": URL bị từ chối")
+				continue
+			}
+			return nil
+		}
+		if !retry {
+			return acceptErr
+		}
+		errs = append(errs, attempt.name+": "+acceptErr.Error())
 	}
-	return "", fmt.Errorf("không tải được screenshot lên dịch vụ tạm: %s", strings.Join(errs, "; "))
+
+	return fmt.Errorf("không tải/gửi được screenshot qua dịch vụ tạm: %s", strings.Join(errs, "; "))
 }
 
 func uploadLitterbox(ctx context.Context, client *http.Client, path string) (string, error) {
