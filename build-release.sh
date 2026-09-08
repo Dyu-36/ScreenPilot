@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION="${VERSION:-3.0.3}"
+VERSION="${VERSION:-3.0.4}"
 
 echo "[Manager] Formatting..."
 gofmt -w ./cmd ./internal

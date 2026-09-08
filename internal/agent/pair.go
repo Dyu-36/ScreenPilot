@@ -130,6 +130,9 @@ func (s *Shared) Pair(ctx context.Context, token, code string, ttl time.Duration
 			return chatID, nil
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	logging.Append("pairing: timeout")
 	return "", fmt.Errorf("hết 60 giây chờ mã /pair. Hãy thử lại")
 }
