@@ -14,6 +14,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Disable Git CRLF conversion
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v4
 
