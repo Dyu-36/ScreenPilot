@@ -25,10 +25,8 @@ type uploadAttempt struct {
 }
 
 var imageUploadAttempts = []uploadAttempt{
+	{"Uguu", uploadUguu},
 	{"Litterbox", uploadLitterbox},
-	{"Tmpfiles", uploadTmpfiles},
-	{"0x0.st", upload0x0},
-	{"File.io", uploadFileIO},
 }
 
 // UploadImage preserves the previous behavior: return the first provider that
@@ -81,6 +79,30 @@ func UploadImageUntilAccepted(ctx context.Context, client *http.Client, path str
 	}
 
 	return fmt.Errorf("không tải/gửi được screenshot qua dịch vụ tạm: %s", strings.Join(errs, "; "))
+}
+
+func uploadUguu(ctx context.Context, client *http.Client, path string) (string, error) {
+	body, err := postMultipart(ctx, client, "https://uguu.se/upload.php", "files[]", path, nil)
+	if err != nil {
+		return "", err
+	}
+	var v struct {
+		Success bool `json:"success"`
+		Files   []struct {
+			URL string `json:"url"`
+		} `json:"files"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		return "", fmt.Errorf("Uguu trả JSON không hợp lệ: %w", err)
+	}
+	if !v.Success || len(v.Files) == 0 || strings.TrimSpace(v.Files[0].URL) == "" {
+		if len(v.Errors) > 0 {
+			return "", fmt.Errorf("Uguu upload lỗi: %s", strings.Join(v.Errors, "; "))
+		}
+		return "", errors.New("Uguu không trả URL")
+	}
+	return parsePlainURL(v.Files[0].URL)
 }
 
 func uploadLitterbox(ctx context.Context, client *http.Client, path string) (string, error) {
