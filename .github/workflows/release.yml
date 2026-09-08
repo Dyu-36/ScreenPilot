@@ -1,0 +1,116 @@
+name: Release Manager
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Package Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and validate
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" bash build-release.sh
+
+      - name: Package end-user bundle
+        shell: bash
+        run: |
+          bundle="release/Manager-Linux-x86_64"
+          mkdir -p "$bundle"
+          cp dist/Manager dist/ManagerUI dist/ManagerCapture "$bundle/"
+          cp packaging/linux/install.sh packaging/linux/uninstall.sh packaging/linux/README.txt "$bundle/"
+          chmod 0755 "$bundle/Manager" "$bundle/ManagerUI" "$bundle/ManagerCapture" "$bundle/install.sh" "$bundle/uninstall.sh"
+          tar -C release -czf release/Manager-Linux-x86_64.tar.gz Manager-Linux-x86_64
+
+      - name: Upload Linux release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: release/Manager-Linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Package Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and validate
+        shell: cmd
+        run: |
+          set "VERSION=%GITHUB_REF_NAME:v=%"
+          call build-release.cmd
+
+      - name: Package end-user bundle
+        shell: pwsh
+        run: |
+          $bundle = "release\Manager-Windows-x86_64"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item dist\Manager.exe,dist\ManagerUI.exe,dist\ManagerCapture.exe -Destination $bundle
+          Copy-Item packaging\windows\install.cmd,packaging\windows\uninstall.cmd,packaging\windows\README.txt -Destination $bundle
+          Compress-Archive -Path $bundle -DestinationPath release\Manager-Windows-x86_64.zip -Force
+
+      - name: Upload Windows release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: release/Manager-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - linux
+      - windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged assets
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          cd release
+          sha256sum Manager-Linux-x86_64.tar.gz Manager-Windows-x86_64.zip > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/Manager-Linux-x86_64.tar.gz \
+            release/Manager-Windows-x86_64.zip \
+            release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Manager $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

@@ -1,6 +1,5 @@
 package appinfo
 
-const (
-	Name    = "Manager"
-	Version = "3.0.0"
-)
+const Name = "Manager"
+
+var Version = "3.0.0"
