@@ -1,6 +1,8 @@
 @echo off
 setlocal
 
+if "%VERSION%"=="" set VERSION=3.0.0
+
 echo [Manager] Stopping running processes...
 for %%P in (Manager.exe ManagerUI.exe ManagerCapture.exe) do (
     taskkill /F /IM %%P >nul 2>&1
@@ -22,9 +24,9 @@ go test ./...
 if errorlevel 1 exit /b %errorlevel%
 
 set CGO_ENABLED=0
-set LDFLAGS=-s -w -H=windowsgui
+set LDFLAGS=-s -w -H=windowsgui -X github.com/Dyu-36/screenshot/internal/appinfo.Version=%VERSION%
 
-echo [Manager] Building Manager.exe...
+echo [Manager] Building Manager.exe version %VERSION%...
 go build -trimpath -ldflags="%LDFLAGS%" -o dist\Manager.exe ./cmd/manager
 if errorlevel 1 exit /b %errorlevel%
 

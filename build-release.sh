@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+VERSION="${VERSION:-3.0.0}"
+
 echo "[Manager] Formatting..."
 gofmt -w ./cmd ./internal
 
@@ -16,9 +18,9 @@ rm -rf dist
 mkdir -p dist
 
 export CGO_ENABLED=0
-LDFLAGS="-s -w"
+LDFLAGS="-s -w -X github.com/Dyu-36/screenshot/internal/appinfo.Version=${VERSION}"
 
-echo "[Manager] Building Linux binaries..."
+echo "[Manager] Building Linux binaries version ${VERSION}..."
 go build -trimpath -ldflags "$LDFLAGS" -o dist/Manager ./cmd/manager
 go build -trimpath -ldflags "$LDFLAGS" -o dist/ManagerUI ./cmd/manager-ui
 go build -trimpath -ldflags "$LDFLAGS" -o dist/ManagerCapture ./cmd/manager-capture
