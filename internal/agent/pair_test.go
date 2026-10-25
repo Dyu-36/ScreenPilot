@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Dyu-36/screenshot/internal/config"
-	"github.com/Dyu-36/screenshot/internal/zalo"
+	"github.com/Dyu-36/screenpilot/internal/config"
+	"github.com/Dyu-36/screenpilot/internal/zalo"
 )
 
 func TestPairCommandMatches(t *testing.T) {

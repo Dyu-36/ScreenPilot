@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Dyu-36/screenshot/internal/agent"
-	"github.com/Dyu-36/screenshot/internal/config"
-	"github.com/Dyu-36/screenshot/internal/ipc"
-	"github.com/Dyu-36/screenshot/internal/logging"
-	"github.com/Dyu-36/screenshot/internal/platform"
-	"github.com/Dyu-36/screenshot/internal/worker"
+	"github.com/Dyu-36/screenpilot/internal/agent"
+	"github.com/Dyu-36/screenpilot/internal/config"
+	"github.com/Dyu-36/screenpilot/internal/ipc"
+	"github.com/Dyu-36/screenpilot/internal/logging"
+	"github.com/Dyu-36/screenpilot/internal/platform"
+	"github.com/Dyu-36/screenpilot/internal/worker"
 )
 
 type options struct {

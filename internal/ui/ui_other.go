@@ -5,7 +5,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/Dyu-36/screenshot/internal/agent"
+	"github.com/Dyu-36/screenpilot/internal/agent"
 )
 
 func Run(*agent.Shared) error {

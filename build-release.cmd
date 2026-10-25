@@ -24,7 +24,7 @@ go test ./...
 if errorlevel 1 exit /b %errorlevel%
 
 set CGO_ENABLED=0
-set LDFLAGS=-s -w -H=windowsgui -X github.com/Dyu-36/screenshot/internal/appinfo.Version=%VERSION%
+set LDFLAGS=-s -w -H=windowsgui -X github.com/Dyu-36/screenpilot/internal/appinfo.Version=%VERSION%
 
 echo [Manager] Building Manager.exe version %VERSION%...
 go build -trimpath -ldflags="%LDFLAGS%" -o dist\Manager.exe ./cmd/manager

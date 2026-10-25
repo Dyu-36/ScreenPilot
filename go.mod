@@ -1,4 +1,4 @@
-module github.com/Dyu-36/screenshot
+module github.com/Dyu-36/screenpilot
 
 go 1.23.0
 

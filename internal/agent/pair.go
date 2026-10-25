@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Dyu-36/screenshot/internal/config"
-	"github.com/Dyu-36/screenshot/internal/logging"
-	"github.com/Dyu-36/screenshot/internal/zalo"
+	"github.com/Dyu-36/screenpilot/internal/config"
+	"github.com/Dyu-36/screenpilot/internal/logging"
+	"github.com/Dyu-36/screenpilot/internal/zalo"
 )
 
 const pairPollSlice = 5 * time.Second

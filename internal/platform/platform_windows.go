@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/Dyu-36/screenshot/internal/logging"
+	"github.com/Dyu-36/screenpilot/internal/logging"
 )
 
 const (

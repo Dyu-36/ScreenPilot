@@ -18,7 +18,7 @@ rm -rf dist
 mkdir -p dist
 
 export CGO_ENABLED=0
-LDFLAGS="-s -w -X github.com/Dyu-36/screenshot/internal/appinfo.Version=${VERSION}"
+LDFLAGS="-s -w -X github.com/Dyu-36/screenpilot/internal/appinfo.Version=${VERSION}"
 
 echo "[Manager] Building Linux binaries version ${VERSION}..."
 go build -trimpath -ldflags "$LDFLAGS" -o dist/Manager ./cmd/manager

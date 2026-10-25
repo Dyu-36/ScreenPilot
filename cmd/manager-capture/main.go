@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Dyu-36/screenshot/internal/platform"
-	"github.com/Dyu-36/screenshot/internal/screenshot"
+	"github.com/Dyu-36/screenpilot/internal/platform"
+	"github.com/Dyu-36/screenpilot/internal/screenshot"
 )
 
 func main() {
